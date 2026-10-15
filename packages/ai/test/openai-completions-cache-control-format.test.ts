@@ -176,7 +176,9 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("preserves route-specific cache write pricing for Anthropic models", async () => {
-		const model = getModel("openrouter", "anthropic/claude-3-haiku");
+		// A cache write price that is not 1.25x input proves the route's own price is billed.
+		const base = getModel("openrouter", "anthropic/claude-haiku-4.5");
+		const model = { ...base, cost: { ...base.cost, cacheWrite: base.cost.input * 1.2 } };
 		const { params, result } = await runCompletion(model);
 		expectAnthropicCacheMarkers(params);
 		expect(result.usage.cost.cacheWrite).toBeCloseTo((80 * model.cost.cacheWrite) / 1_000_000);

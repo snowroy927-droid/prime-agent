@@ -27,6 +27,7 @@ const packageRoot = join(__dirname, "..");
 interface ModelsDevModel {
 	id: string;
 	name: string;
+	canonical_model_id?: string;
 	tool_call?: boolean;
 	reasoning?: boolean;
 	limit?: {
@@ -1070,7 +1071,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				} else if (upstream === "anthropic") {
 					api = "anthropic-messages";
 					baseUrl = CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL;
-					id = nativeId;
+					// models.dev keys these by dotted names (claude-opus-4.7) and records the
+					// Anthropic API id (anthropic/claude-opus-4-7) as canonical_model_id; the
+					// native route forwards the id unchanged, so it must be the API id.
+					id = m.canonical_model_id?.startsWith("anthropic/")
+						? m.canonical_model_id.slice("anthropic/".length)
+						: nativeId;
 				} else if (upstream === "workers-ai") {
 					api = "openai-completions";
 					baseUrl = CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL;

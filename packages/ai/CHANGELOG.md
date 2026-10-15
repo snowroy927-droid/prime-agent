@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Fixed the build failing and Kimi For Coding models disappearing after models.dev renamed its `kimi-for-coding` catalog entry to `kimi-code-plan-cn`.
+- Fixed Cloudflare AI Gateway Claude models using dotted ids that Anthropic's API rejects after models.dev renamed its gateway entries.
 
 ## [0.7.1] - 2026-08-07
 
