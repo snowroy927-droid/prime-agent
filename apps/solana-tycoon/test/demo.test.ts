@@ -1,13 +1,16 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { EngineBus } from "../src/engine/bus";
 import { RpcBudget } from "../src/engine/chain/rpcBudget";
 import { type Clock, ManualClock, ScaledClock } from "../src/engine/clock";
 import { TradingCore } from "../src/engine/core/tradingCore";
+import { buildKrakenDemo } from "../src/engine/kraken/synthetic";
 import { Ledger } from "../src/engine/ledger/ledger";
 import { ReplayDriver } from "../src/engine/replay/player";
+import { formatRecording } from "../src/engine/replay/recording";
 import { buildDemoSession } from "../src/engine/replay/synthetic";
 import { PUMP_RISK_COPY, pumpLimits, RiskGuard } from "../src/engine/risk/guard";
 import { LaunchHistory } from "../src/engine/scout/launchHistory";
@@ -78,7 +81,16 @@ async function runDemo(speed = 1): Promise<{ events: EngineEvent[]; symbols: Map
 	return { events, symbols };
 }
 
+const fixtures = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
+
 describe("synthetic demo session", () => {
+	it("matches the checked-in fixtures that npm run make-demo writes", () => {
+		expect(readFileSync(join(fixtures, "demo-session.jsonl"), "utf8")).toBe(formatRecording(buildDemoSession(7)));
+		expect(readFileSync(join(fixtures, "kraken-demo-session.jsonl"), "utf8")).toBe(
+			formatRecording(buildKrakenDemo(7)),
+		);
+	});
+
 	it("is deterministic for a seed and labelled synthetic", () => {
 		const a = buildDemoSession(7);
 		expect(JSON.stringify(buildDemoSession(7))).toBe(JSON.stringify(a));

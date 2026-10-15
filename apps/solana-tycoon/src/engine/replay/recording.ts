@@ -10,7 +10,12 @@ export type RecordingLine =
 	| { t: number; kind: "curve"; mint: string; snap: unknown }
 	| { t: number; kind: "holders"; mint: string; holders: unknown }
 	| { t: number; kind: "pool"; mint: string; pool: unknown }
-	| { t: number; kind: "feed"; status: FeedStatus };
+	| { t: number; kind: "feed"; status: FeedStatus }
+	| { t: number; kind: "kraken_ws"; raw: string }
+	| { t: number; kind: "kraken_rest"; endpoint: KrakenEndpoint; query: string; body: unknown }
+	| { t: number; kind: "kraken_feed"; status: FeedStatus };
+
+export type KrakenEndpoint = "AssetPairs" | "Ticker" | "OHLC";
 
 const t = z.number().nonnegative();
 
@@ -22,7 +27,20 @@ const RecordingLineSchema = z.discriminatedUnion("kind", [
 	z.object({ t, kind: z.literal("holders"), mint: z.string(), holders: z.json() }),
 	z.object({ t, kind: z.literal("pool"), mint: z.string(), pool: z.json() }),
 	z.object({ t, kind: z.literal("feed"), status: FeedStatusSchema }),
+	z.object({ t, kind: z.literal("kraken_ws"), raw: z.string() }),
+	z.object({
+		t,
+		kind: z.literal("kraken_rest"),
+		endpoint: z.enum(["AssetPairs", "Ticker", "OHLC"]),
+		query: z.string(),
+		body: z.json(),
+	}),
+	z.object({ t, kind: z.literal("kraken_feed"), status: FeedStatusSchema }),
 ]);
+
+export function formatRecording(lines: readonly RecordingLine[]): string {
+	return `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`;
+}
 
 // Lines that fail to parse (for example a recording cut off mid-write) are skipped.
 export function readRecording(path: string): RecordingLine[] {

@@ -1,13 +1,8 @@
 import { join } from "node:path";
 import type { ManualClock } from "../../src/engine/clock";
-import { BarBook } from "../../src/engine/kraken/bars";
-import { KRAKEN_RISK_COPY, KrakenDesk, krakenLimits } from "../../src/engine/kraken/desk";
+import { assembleKrakenDesk } from "../../src/engine/kraken/assemble";
 import { KrakenLedger } from "../../src/engine/kraken/ledger";
-import { PairUniverse } from "../../src/engine/kraken/pairs";
-import { KrakenPaperExecutor } from "../../src/engine/kraken/paper";
-import { RiskGuard } from "../../src/engine/risk/guard";
-import { JsonSettingsStore } from "../../src/engine/settingsStore";
-import { applyKrakenSettingsPatch, DEFAULT_KRAKEN_SETTINGS, type KrakenEvent } from "../../src/shared/kraken";
+import type { KrakenEvent } from "../../src/shared/kraken";
 import { FakeKrakenFeed, FakeKrakenRest, usdPair } from "./fakeKraken";
 
 const MIN = 60_000;
@@ -35,49 +30,24 @@ export function buildKrakenDesk(opts: {
 	const rest = new FakeKrakenRest();
 	rest.pairs = { MOONUSD: usdPair("MOON"), WIDEUSD: usdPair("WIDE") };
 	const feed = new FakeKrakenFeed();
-	const settings = new JsonSettingsStore(
-		join(opts.dir, "settings-kraken.json"),
-		DEFAULT_KRAKEN_SETTINGS,
-		applyKrakenSettingsPatch,
-	);
-	if (opts.settings && !settings.update(opts.settings).ok) throw new Error("invalid test settings");
 	const ledgerPath = join(opts.dir, "ledger-kraken.jsonl");
 	opts.prepare?.(new KrakenLedger(ledgerPath));
-	const universe = new PairUniverse({ rest, clock, settings: () => settings.get() });
-	const risk = new RiskGuard({
-		clock,
-		limits: () => krakenLimits(settings.get()),
-		copy: KRAKEN_RISK_COPY,
-		tzOffsetMin: () => 0,
-	});
-	let desk: KrakenDesk | null = null;
-	const executor = new KrakenPaperExecutor({
-		mode: "paper",
-		clock,
-		settings: () => settings.get(),
-		universe,
-		quote: (pair) => desk?.quote(pair) ?? null,
-		halted: (pair) => desk?.isHalted(pair) ?? false,
-	});
 	const events: KrakenEvent[] = [];
-	desk = new KrakenDesk({
+	const { desk, universe, settings } = assembleKrakenDesk({
 		mode: "paper",
 		synthetic: false,
 		feed,
 		rest,
-		universe,
-		bars: new BarBook(),
-		executor,
-		ledger: new KrakenLedger(ledgerPath),
-		settings,
-		risk,
 		clock,
+		settingsPath: join(opts.dir, "settings-kraken.json"),
+		ledgerPath,
 		emit: (event) => {
 			events.push(event);
 			opts.emit?.(event);
 		},
 		tzOffsetMin: () => 0,
 	});
+	if (opts.settings && !settings.update(opts.settings).ok) throw new Error("invalid test settings");
 	const ticker = (symbol: string, bid: string, ask: string) =>
 		feed.emit({
 			type: "ticker",

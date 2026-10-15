@@ -4,12 +4,14 @@ import type { FeedStatus } from "../../shared/types";
 import type { ChainSource, CurveSnapshot, PoolSnapshot } from "../chain/types";
 import type { Clock } from "../clock";
 import { toJsonSafe } from "../codec";
-import type { RecordingLine } from "./recording";
+import type { KrakenRestLike } from "../kraken/rest";
+import type { KrakenEndpoint, RecordingLine } from "./recording";
 
-// Writes the launches and chain reads of a live session so it can be replayed offline.
+// Writes the launches, chain reads, and Kraken market data of a live session so it can be replayed offline.
 export class Recorder {
 	private readonly startedAt: number;
 	private globalsWritten = false;
+	private krakenStatus: FeedStatus | null = null;
 
 	constructor(
 		private readonly path: string,
@@ -72,6 +74,30 @@ export class Recorder {
 
 	feedStatus(status: FeedStatus): void {
 		this.write({ t: this.elapsed(), kind: "feed", status });
+	}
+
+	wrapKrakenRest(rest: KrakenRestLike): KrakenRestLike {
+		const recorded = async (endpoint: KrakenEndpoint, query: string, call: Promise<unknown>) => {
+			const body = await call;
+			this.write({ t: this.elapsed(), kind: "kraken_rest", endpoint, query, body });
+			return body;
+		};
+		return {
+			assetPairs: () => recorded("AssetPairs", "", rest.assetPairs()),
+			ticker: (pairs) => recorded("Ticker", pairs.join(","), rest.ticker(pairs)),
+			ohlc: (pair) => recorded("OHLC", pair, rest.ohlc(pair)),
+		};
+	}
+
+	krakenRaw(raw: string): void {
+		this.write({ t: this.elapsed(), kind: "kraken_ws", raw });
+	}
+
+	// The live feed repeats its status to report dropped-message counts; only changes are recorded.
+	krakenFeedStatus(status: FeedStatus): void {
+		if (status === this.krakenStatus) return;
+		this.krakenStatus = status;
+		this.write({ t: this.elapsed(), kind: "kraken_feed", status });
 	}
 
 	private curve(snapshot: CurveSnapshot): void {

@@ -191,6 +191,9 @@ export class ReplayDriver {
 			}
 			case "meta":
 			case "globals":
+			case "kraken_ws":
+			case "kraken_rest":
+			case "kraken_feed":
 				break;
 		}
 	}
