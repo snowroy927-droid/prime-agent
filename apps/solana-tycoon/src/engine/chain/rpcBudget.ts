@@ -14,12 +14,16 @@ export class RpcBudget {
 	}
 
 	tryTake(cost = 1): boolean {
+		if (!this.canAfford(cost)) return false;
+		this.tokens -= cost;
+		return true;
+	}
+
+	canAfford(cost: number): boolean {
 		const now = this.clock.now();
 		this.tokens = Math.min(this.maxPerSecond, this.tokens + ((now - this.last) / 1000) * this.maxPerSecond);
 		this.last = now;
-		if (this.tokens < cost) return false;
-		this.tokens -= cost;
-		return true;
+		return this.tokens >= cost;
 	}
 
 	capacity(): number {

@@ -21,4 +21,12 @@ describe("RpcBudget", () => {
 		expect(budget.tryTake(4)).toBe(true);
 		expect(budget.tryTake()).toBe(false);
 	});
+
+	it("reports affordability without spending", () => {
+		const budget = new RpcBudget(3, new ManualClock(0));
+		expect(budget.canAfford(3)).toBe(true);
+		expect(budget.canAfford(3)).toBe(true);
+		expect(budget.tryTake(3)).toBe(true);
+		expect(budget.canAfford(1)).toBe(false);
+	});
 });
