@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Outcome } from "./outcome";
 import { type PatchResult, parsePatched } from "./settings";
 import type { Stats } from "./stats";
-import type { ExitReason, FeedStatus, Mode, OrderStatus, RiskState, Side } from "./types";
+import type { ExitReason, FeedStatus, LogLine, Mode, OrderStatus, RiskState, Side } from "./types";
 
 // Amounts: micro-USD decimal strings (`...UsdMicros`); quantities: integer lots at the pair's lot_decimals;
 // prices: decimal strings.
@@ -197,3 +197,19 @@ export type KrakenCommand =
 	| { type: "kraken_pin" | "kraken_unpin"; id: string; pair: string }
 	| { type: "kraken_pause" | "kraken_resume"; id: string }
 	| { type: "kraken_setSettings"; id: string; patch: unknown };
+
+export type KrakenEvent =
+	| { type: "kraken_movers"; movers: Mover[] }
+	| { type: "kraken_price"; pair: string; bid: string; ask: string; last: string; at: number }
+	| { type: "kraken_order"; order: KrakenOrderUpdate }
+	| { type: "kraken_position"; position: KrakenPosition }
+	| { type: "kraken_close"; trade: KrakenClosedTrade }
+	| { type: "kraken_stats"; stats: Stats; scanStats: ScanStats }
+	| { type: "kraken_feed"; status: FeedStatus; dropped: number; reconnectAt: number | null }
+	| { type: "kraken_risk"; risk: RiskState }
+	| { type: "kraken_balance"; usdMicros: string }
+	| { type: "kraken_settings"; settings: KrakenSettings }
+	| { type: "kraken_pinned"; pairs: string[] }
+	| { type: "kraken_sol_usd"; price: string; at: number }
+	| { type: "kraken_offline"; error: string }
+	| { type: "log"; line: LogLine };
