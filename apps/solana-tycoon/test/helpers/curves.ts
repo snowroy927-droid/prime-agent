@@ -2,7 +2,9 @@ import type { BondingCurve, Global } from "@pump-fun/pump-sdk";
 import type { GlobalConfig, Pool } from "@pump-fun/pump-swap-sdk";
 import type { AccountInfo, PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
+import { decodeMint } from "../../src/engine/chain/pumpPool";
 import { pump, splToken, swap, web3 } from "../../src/engine/chain/solana";
+import type { PoolSnapshot } from "../../src/engine/chain/types";
 
 type IdlFieldType =
 	| string
@@ -164,4 +166,30 @@ export function encodePool(pool: Pool): AccountInfo<Buffer> {
 export function encodeGlobalConfig(): AccountInfo<Buffer> {
 	const config = idlDefault(ammProgram, "globalConfig") as GlobalConfig;
 	return accountInfo(encodeAccount(ammProgram, "globalConfig", config), swap.PUMP_AMM_PROGRAM_ID);
+}
+
+export function fixturePoolSnapshot(
+	mint: PublicKey,
+	baseReserve = 200_000_000_000_000n,
+	quoteReserve = 85_000_000_000n,
+): PoolSnapshot {
+	const pool = fixturePool(mint);
+	return {
+		mint: mint.toBase58(),
+		baseReserve,
+		quoteReserve,
+		slot: 1,
+		at: 0,
+		quote: {
+			globalConfig: idlDefault(ammProgram, "globalConfig") as GlobalConfig,
+			feeConfig: null,
+			baseMintAccount: decodeMint(mintAccount(splToken.TOKEN_PROGRAM_ID)),
+			baseMint: mint,
+			coinCreator: pool.coinCreator,
+			creator: pool.creator,
+			quoteMint: pool.quoteMint,
+			isMayhemMode: false,
+			creatorFeeBps: new BN(0),
+		},
+	};
 }
