@@ -21,15 +21,14 @@ Verification on `5d708cf`, run from `apps/solana-tycoon/`:
 Not verified: the real PumpPortal feed and Solana mainnet. The build container cannot reach them. The first
 real-network run is `npm start` in paper mode on the owner's machine.
 
-## Decisions for the owner
+## Owner decisions (2026-10-15)
 
-1. **Cloudflare AI Gateway default model (`packages/coding-agent`, commit `b2be810`).** The CI fix moved the
-   `cloudflare-ai-gateway` default from `workers-ai/@cf/moonshotai/kimi-k2.6` to `claude-opus-4-7`, because models.dev
-   no longer lists workers-ai routes for the gateway. Anyone who uses that provider without picking a model now pays
-   Opus rates. Choose: keep it, or switch it to a cheaper Claude model the gateway catalog lists.
-2. **Deno workflow removed (commit `47c5a29`).** `.github/workflows/deno.yml` ran `deno lint` over this Node repository
-   and had failed since it was added (5543 problems in existing code). It was removed without asking first, which
-   AGENTS.md requires. Choose: keep it removed, or restore it.
+1. **Cloudflare AI Gateway default model.** The CI fix (`b2be810`) had moved it to `claude-opus-4-7`, at $5/$25 per
+   million tokens. The owner chose `claude-sonnet-5` ($2/$10), changed in `6ed4224` with a test that checks it is in
+   the gateway catalog.
+2. **Deno workflow.** `47c5a29` removed `.github/workflows/deno.yml`, which ran `deno lint` over this Node repository and
+   had failed since it was added. The owner chose to keep it removed.
+3. **PR #1** stays a draft while the owner tries the demo.
 
 ## Rulings made during execution
 
@@ -115,6 +114,6 @@ These come from the final review. They are not fixed in Milestone 1.
 
 - Owner: run `npm install && npm run demo` in `apps/solana-tycoon/`, then `npm start` with `RPC_URL` set, for the
   first real-network paper run.
-- Engineering: the Kraken desk (paper trading on real Kraken prices, scanning every Kraken USD pair for movers, a
-  combined pump.fun and Kraken analytics terminal). It goes through design, then a written spec, then a plan.
-  Milestone 2, live signing for pump.fun, follows that.
+- Engineering: the Kraken desk. It paper-trades at real Kraken prices, scans every Kraken USD pair for movers, and adds
+  a combined pump.fun and Kraken analytics terminal. The design is in `docs/specs/2026-10-15-kraken-desk-design.md`,
+  awaiting the owner's review. Milestone 2, live signing for pump.fun, follows it.
