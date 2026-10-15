@@ -1,4 +1,5 @@
 import type { BondingCurve } from "@pump-fun/pump-sdk";
+import type { RpcBudget } from "../../src/engine/chain/rpcBudget";
 import type {
 	ChainSource,
 	CurveSnapshot,
@@ -23,7 +24,11 @@ export class FakeChain implements ChainSource {
 	private readonly curveListeners = new Map<string, Set<Listener<CurveSnapshot>>>();
 	private readonly poolListeners = new Map<string, Set<Listener<PoolSnapshot>>>();
 
-	constructor(private readonly clock: Clock) {}
+	// With a budget, reads spend it like PumpChain does (curve 1, holders 2, pool 2).
+	constructor(
+		private readonly clock: Clock,
+		private readonly budget: RpcBudget | null = null,
+	) {}
 
 	setCurve(mint: string, curve: BondingCurve | null, tokenProgram: TokenProgramKind = "spl"): void {
 		if (!curve) {
@@ -61,6 +66,7 @@ export class FakeChain implements ChainSource {
 
 	async fetchCurve(mint: string): Promise<CurveSnapshot | null> {
 		if (this.fetchCurveError) throw this.fetchCurveError;
+		this.budget?.tryTake(1);
 		return this.curves.get(mint) ?? null;
 	}
 
@@ -69,10 +75,12 @@ export class FakeChain implements ChainSource {
 	}
 
 	async fetchHolders(mint: string): Promise<HolderSummary> {
+		this.budget?.tryTake(2);
 		return this.holders.get(mint) ?? { supply: 1_000_000_000_000_000n, curveAccount: "curve", holders: [] };
 	}
 
 	async fetchPool(mint: string): Promise<PoolSnapshot | null> {
+		this.budget?.tryTake(2);
 		return this.pools.get(mint) ?? null;
 	}
 
