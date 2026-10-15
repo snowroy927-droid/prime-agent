@@ -226,7 +226,9 @@ export class KrakenDesk {
 	async handleCommand(command: KrakenCommand): Promise<Result> {
 		switch (command.type) {
 			case "kraken_buy": {
-				if (!this.deps.universe.byPair(command.pair)) return fail("Unknown pair");
+				const known = this.deps.universe.byPair(command.pair);
+				if (!known) return fail("Unknown pair");
+				if (!this.hasLivePrice(command.pair)) return fail(`No live price for ${known.symbol}`);
 				const status = this.movers.find((mover) => mover.pair === command.pair)?.status;
 				const decision = this.deps.risk.canOpen("manual", this.outcomes(), this.openCount(), {
 					holdConfirmed: command.holdConfirmed ?? false,
@@ -287,6 +289,11 @@ export class KrakenDesk {
 		this.killActive = false;
 		this.deps.risk.setPaused(false, null);
 		this.emitRisk(true);
+	}
+
+	private hasLivePrice(pair: string): boolean {
+		const quote = this.scanner.quote(pair);
+		return quote !== null && this.deps.clock.now() - quote.at <= this.deps.settings.get().priceStaleSec * 1000;
 	}
 
 	private symbols(): string[] {
@@ -410,6 +417,14 @@ export class KrakenDesk {
 			this.moverHours.set(hour, bucket);
 			if (mover.status !== "eligible") {
 				this.countSkip(mover.pair, SKIP_LABELS[mover.status] ?? mover.reason, hour);
+				continue;
+			}
+			if (this.feedState.status !== "live") {
+				this.countSkip(mover.pair, "Kraken feed down", hour);
+				continue;
+			}
+			if (!this.hasLivePrice(mover.pair)) {
+				this.countSkip(mover.pair, "No live price", hour);
 				continue;
 			}
 			const decision = this.deps.risk.canOpen("auto", this.outcomes(), this.openCount(), {

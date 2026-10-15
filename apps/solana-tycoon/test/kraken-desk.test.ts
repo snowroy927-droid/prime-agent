@@ -179,8 +179,28 @@ describe("KrakenDesk", () => {
 		expect(h.desk.snapshot().positions).toMatchObject([{ id: "k1", pair: "MOONUSD", costUsdMicros: "50400000" }]);
 	});
 
+	it("refuses a manual buy on a price older than priceStaleSec", async () => {
+		const h = await harness();
+		h.ticker("MOON", "1.000", "1.001");
+		await h.clock.advance(11_000);
+		expect(await h.desk.handleCommand({ type: "kraken_buy", id: "b", pair: "MOONUSD", holdConfirmed: true })).toEqual(
+			{ ok: false, error: "No live price for MOON" },
+		);
+	});
+
+	it("skips auto-buys while the Kraken feed is down and counts why", async () => {
+		const h = await harness();
+		h.feed.emit({ type: "status", status: "down", dropped: 0, reconnectAt: NOW + 5_000 });
+		h.rest.candles.set("MOONUSD", restRows(NOW));
+		h.ticker("MOON", "1.059", "1.061");
+		await h.clock.advance(11_000);
+		expect(h.events.some((e) => e.type === "kraken_order")).toBe(false);
+		expect(h.desk.snapshot().scanStats.skipReasons).toContainEqual({ reason: "Kraken feed down", count: 1 });
+	});
+
 	it("refuses buys beyond the paper balance, a seventh pin, and unknown pairs", async () => {
 		const h = await harness({ settings: { buyUsd: 1000, paper: { startingBalanceUsd: 100 } } });
+		h.ticker("MOON", "1.000", "1.001");
 		expect(await h.desk.handleCommand({ type: "kraken_buy", id: "b", pair: "MOONUSD", holdConfirmed: true })).toEqual(
 			{
 				ok: false,

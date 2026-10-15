@@ -93,6 +93,16 @@ describe("KrakenPaperExecutor", () => {
 		expect(await refused).toEqual({ ok: false, error: "Pair halted" });
 	});
 
+	it("refuses a buy when the ask is older than priceStaleSec, but still sells on it", async () => {
+		const h = setup();
+		await h.clock.advance(10_800);
+		const buy = h.executor.buy({ positionId: "k1", pair: "PEPEUSD", usdMicros: 50_000_000n });
+		const sell = h.executor.sell({ positionId: "k2", pair: "PEPEUSD", lots: 1_000_000n });
+		await h.clock.advance(300);
+		expect(await buy).toEqual({ ok: false, error: "No live price for PEPE" });
+		expect((await sell).ok).toBe(true);
+	});
+
 	it("refuses a halted pair and a pair without a price", async () => {
 		const h = setup();
 		h.halted.add("PEPEUSD");

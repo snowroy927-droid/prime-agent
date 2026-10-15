@@ -10,8 +10,10 @@ export class FakeKrakenFeed implements KrakenFeedLike {
 		this.symbols = [...wsnames];
 	}
 
+	// Like KrakenFeed once its socket opens.
 	start(): void {
 		this.started = true;
+		this.emit({ type: "status", status: "live", dropped: 0, reconnectAt: null });
 	}
 
 	stop(): void {

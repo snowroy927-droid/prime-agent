@@ -27,6 +27,10 @@ export class KrakenPaperExecutor {
 		if (!pair || this.deps.halted(r.pair)) return { ok: false, error: "Pair halted" };
 		const quote = this.deps.quote(r.pair);
 		if (!quote) return { ok: false, error: `No price for ${pair.symbol}` };
+		// Spec §6: a buy fills at the ask "at that moment"; an ask older than priceStaleSec is not one.
+		if (this.deps.clock.now() - quote.at > this.deps.settings().priceStaleSec * 1000) {
+			return { ok: false, error: `No live price for ${pair.symbol}` };
+		}
 		const result = quoteBuy(r.usdMicros, toScaled(quote.ask, pair.priceDecimals), pair, paper);
 		if (!result.ok) return result;
 		return this.filled(
