@@ -16,7 +16,7 @@ import type {
 
 export const PROTOCOL_VERSION = 1;
 
-const LamportsSchema = z.string().regex(/^-?\d+$/, "expected an integer string");
+export const LamportsSchema = z.string().regex(/^-?\d+$/, "expected an integer string");
 
 export const ModeSchema = z.enum(["paper", "live", "replay", "demo"]);
 export const FeedStatusSchema = z.enum(["connecting", "live", "down"]);
