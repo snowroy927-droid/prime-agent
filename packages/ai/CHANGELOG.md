@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fixed the build failing and Kimi For Coding models disappearing after models.dev renamed its `kimi-for-coding` catalog entry to `kimi-code-plan-cn`.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05

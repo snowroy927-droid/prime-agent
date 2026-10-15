@@ -1416,9 +1416,11 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			}
 		}
 
-		// Process Kimi For Coding models
-		if (data["kimi-for-coding"]?.models) {
-			const kimiModels = data["kimi-for-coding"].models as Record<string, ModelsDevModel>;
+		// Process Kimi For Coding models. models.dev renamed the api.kimi.com deployment from "kimi-for-coding"
+		// to "kimi-code-plan-cn"; "kimi-code-plan-global" (api.kimi.ai) is a different endpoint.
+		const kimiCatalog = data["kimi-code-plan-cn"]?.models ? data["kimi-code-plan-cn"] : data["kimi-for-coding"];
+		if (kimiCatalog?.models) {
+			const kimiModels = kimiCatalog.models as Record<string, ModelsDevModel>;
 			const hasCanonicalModel = Object.prototype.hasOwnProperty.call(kimiModels, "kimi-for-coding");
 
 			const kimiAliases = new Set(["k2p5", "k2p6"]);
