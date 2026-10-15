@@ -33,6 +33,7 @@ function snapshot(closes: ClosedTrade[] = []): EngineSnapshot {
 		pinned: [],
 		balanceLamports: "1000000000",
 		serverTime: NOW,
+		clockRate: 1,
 	};
 }
 

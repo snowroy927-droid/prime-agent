@@ -47,6 +47,7 @@ describe("parseArgs", () => {
 		expect(() => parseArgs(["--speed", "0"])).toThrow("--speed must be a positive number");
 		expect(() => parseArgs(["--port", "70000"])).toThrow("--port must be an integer from 0 to 65535");
 		expect(() => parseArgs(["--demo", "--replay", "x.jsonl"])).toThrow("Use either --demo or --replay");
+		expect(() => parseArgs(["--speed", "4"])).toThrow("--speed only applies to --demo and --replay");
 	});
 });
 

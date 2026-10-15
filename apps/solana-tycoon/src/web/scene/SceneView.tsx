@@ -23,12 +23,12 @@ const CAMERA_TARGET = new Vector3(-1.4, 1.7, 0.2);
 // Isometric-style view from the room's open corner.
 const CAMERA_DIRECTION = new Vector3(1, 0.86, 1).normalize();
 const CAST_IDS: readonly CastId[] = ["zorp", "vera", "rex", "gloop", "ceo"];
-const TAGS: Record<CastId, string> = {
-	zorp: "ZORP SCOUT",
-	vera: "VERA ANALYST",
-	rex: "REX TRADER",
-	gloop: "GLOOP CFO",
-	ceo: "YOU CEO",
+const TAGS: Record<CastId, { name: string; role: string }> = {
+	zorp: { name: "ZORP", role: "SCOUT" },
+	vera: { name: "VERA", role: "ANALYST" },
+	rex: { name: "REX", role: "TRADER" },
+	gloop: { name: "GLOOP", role: "CFO" },
+	ceo: { name: "YOU", role: "CEO" },
 };
 
 function fitCamera(camera: OrthographicCamera, aspect: number): void {
@@ -108,7 +108,10 @@ export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 		for (const id of CAST_IDS) {
 			const tag = document.createElement("div");
 			tag.className = "cast-tag";
-			tag.textContent = TAGS[id];
+			const role = document.createElement("span");
+			role.className = "cast-role";
+			role.textContent = ` ${TAGS[id].role}`;
+			tag.append(TAGS[id].name, role);
 			const bubble = document.createElement("div");
 			bubble.className = "bubble";
 			bubble.hidden = true;

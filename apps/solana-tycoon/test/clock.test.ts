@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ManualClock, RealClock } from "../src/engine/clock";
+import { ManualClock, RealClock, ScaledClock } from "../src/engine/clock";
 
 describe("ManualClock", () => {
 	it("resolves sleep only once time is advanced past it", async () => {
@@ -49,5 +49,34 @@ describe("RealClock", () => {
 		const start = clock.now();
 		await clock.sleep(20);
 		expect(clock.now() - start).toBeGreaterThanOrEqual(15);
+	});
+});
+
+describe("ScaledClock", () => {
+	it("runs time faster than its base clock from the moment it starts", async () => {
+		const base = new ManualClock(10_000);
+		const clock = new ScaledClock(base, 4);
+		expect(clock.now()).toBe(10_000);
+		await base.advance(250);
+		expect(clock.now()).toBe(11_000);
+	});
+
+	it("shortens sleeps and intervals by the same rate", async () => {
+		const base = new ManualClock(0);
+		const clock = new ScaledClock(base, 4);
+		let slept = false;
+		void clock.sleep(1_000).then(() => {
+			slept = true;
+		});
+		let ticks = 0;
+		clock.every(1_000, () => {
+			ticks += 1;
+		});
+		await base.advance(249);
+		expect(slept).toBe(false);
+		await base.advance(1);
+		expect(slept).toBe(true);
+		await base.advance(750);
+		expect(ticks).toBe(4);
 	});
 });

@@ -19,6 +19,31 @@ export class RealClock implements Clock {
 	}
 }
 
+// Runs `rate` times faster than its base clock from the moment it is created, so a replay at
+// --speed N fast-forwards the whole engine: the recording, check delays, fill latency, and holds.
+export class ScaledClock implements Clock {
+	private readonly origin: number;
+
+	constructor(
+		private readonly base: Clock,
+		readonly rate: number,
+	) {
+		this.origin = base.now();
+	}
+
+	now(): number {
+		return Math.floor(this.origin + (this.base.now() - this.origin) * this.rate);
+	}
+
+	sleep(ms: number): Promise<void> {
+		return this.base.sleep(ms / this.rate);
+	}
+
+	every(ms: number, fn: () => void): () => void {
+		return this.base.every(ms / this.rate, fn);
+	}
+}
+
 interface ManualTimer {
 	at: number;
 	seq: number;

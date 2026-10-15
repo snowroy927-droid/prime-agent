@@ -3,7 +3,7 @@ import type { EngineEvent, EngineSnapshot } from "../src/shared/protocol";
 import { DEFAULT_SETTINGS } from "../src/shared/settings";
 import { computeLaunchStats, computeStats } from "../src/shared/stats";
 import type { ClosedTrade, Launch, Position } from "../src/shared/types";
-import { initialGameState, reduce, tick } from "../src/web/state/store";
+import { initialGameState, reduce, serverNow, tick } from "../src/web/state/store";
 import { closed } from "./helpers/trades";
 
 const NOW = 1_000_000;
@@ -32,6 +32,7 @@ function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
 		pinned: [],
 		balanceLamports: "1000000000",
 		serverTime: NOW,
+		clockRate: 1,
 		...over,
 	};
 }
@@ -138,6 +139,18 @@ describe("game store", () => {
 		expect(state.upgrades).toEqual([]);
 	});
 
+	it("logs the dropped feed message count when it grows", () => {
+		const state = apply([
+			{ type: "snapshot", snapshot: snapshot() },
+			{ type: "feed", status: "live", dropped: 3, reconnectAt: null },
+			{ type: "feed", status: "live", dropped: 3, reconnectAt: null },
+		]);
+		const warnings = state.log.filter((line) => line.level === "warn");
+		expect(warnings.map((line) => line.message)).toEqual([
+			"Feed: 3 messages dropped without a valid mint (raw samples in data/fixtures/)",
+		]);
+	});
+
 	it("tracks feed status, risk, balance, settings, and pins", () => {
 		const state = apply([
 			{ type: "snapshot", snapshot: snapshot() },
@@ -163,5 +176,16 @@ describe("game store", () => {
 	it("ignores stream events until a snapshot arrives", () => {
 		const state = reduce(initialGameState(), { type: "launch", launch: launch(1) });
 		expect(state.snapshot).toBeNull();
+	});
+});
+
+describe("server clock", () => {
+	it("extrapolates engine time at the engine's clock rate", () => {
+		expect(serverNow({ server: 5_000, local: 1_000, rate: 4 }, 1_500)).toBe(7_000);
+		expect(serverNow({ server: 5_000, local: 1_000, rate: 1 }, 1_500)).toBe(5_500);
+	});
+
+	it("uses local time before any snapshot", () => {
+		expect(serverNow(null, 1_500)).toBe(1_500);
 	});
 });

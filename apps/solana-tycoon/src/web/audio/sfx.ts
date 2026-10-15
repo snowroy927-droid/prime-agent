@@ -1,3 +1,5 @@
+import { mulberry32 } from "../../shared/prng";
+
 export type SfxId = "launch" | "approve" | "reject" | "fill" | "combo" | "loss" | "fever";
 
 type AudioContextConstructor = typeof AudioContext;
@@ -85,7 +87,8 @@ export class Sfx {
 		const length = Math.floor(ctx.sampleRate * duration);
 		const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
 		const channel = buffer.getChannelData(0);
-		for (let i = 0; i < length; i++) channel[i] = (Math.random() * 2 - 1) * (1 - i / length);
+		const random = mulberry32(length);
+		for (let i = 0; i < length; i++) channel[i] = (random() * 2 - 1) * (1 - i / length);
 		const source = ctx.createBufferSource();
 		const gain = ctx.createGain();
 		gain.gain.value = volume;

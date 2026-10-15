@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EngineBus } from "../src/engine/bus";
 import { RpcBudget } from "../src/engine/chain/rpcBudget";
-import { ManualClock } from "../src/engine/clock";
+import { type Clock, ManualClock, ScaledClock } from "../src/engine/clock";
 import { TradingCore } from "../src/engine/core/tradingCore";
 import { Ledger } from "../src/engine/ledger/ledger";
 import { ReplayDriver } from "../src/engine/replay/player";
@@ -26,11 +26,12 @@ afterEach(() => {
 const ofType = <T extends EngineEvent["type"]>(events: EngineEvent[], type: T) =>
 	events.filter((event): event is Extract<EngineEvent, { type: T }> => event.type === type);
 
-async function runDemo(): Promise<{ events: EngineEvent[]; symbols: Map<string, string> }> {
+async function runDemo(speed = 1): Promise<{ events: EngineEvent[]; symbols: Map<string, string> }> {
 	const dir = mkdtempSync(join(tmpdir(), "demo-"));
 	dirs.push(dir);
-	const clock = new ManualClock(Date.UTC(2026, 9, 15, 12, 0));
-	const driver = new ReplayDriver(buildDemoSession(7), clock, 1);
+	const base = new ManualClock(Date.UTC(2026, 9, 15, 12, 0));
+	const clock: Clock = speed === 1 ? base : new ScaledClock(base, speed);
+	const driver = new ReplayDriver(buildDemoSession(7), clock);
 	const bus = new EngineBus();
 	const events: EngineEvent[] = [];
 	bus.on((event) => events.push(event));
@@ -66,7 +67,7 @@ async function runDemo(): Promise<{ events: EngineEvent[]; symbols: Map<string, 
 		tzOffsetMin: () => 0,
 	});
 	await core.start();
-	for (let second = 0; second < 205; second++) await clock.advance(1_000);
+	for (let second = 0; second < 205; second++) await base.advance(1_000 / speed);
 	await core.stop();
 	const symbols = new Map(ofType(events, "launch").map((event) => [event.launch.mint, event.launch.symbol]));
 	return { events, symbols };
@@ -84,6 +85,14 @@ describe("synthetic demo session", () => {
 		});
 		expect(a.some((line) => line.kind === "globals")).toBe(true);
 		expect(Math.max(...a.map((line) => line.t))).toBeLessThanOrEqual(200_000);
+	});
+
+	it("fast-forwards the whole engine at speed 4, so the same trades close", async () => {
+		const reasons = async (speed: number) =>
+			ofType((await runDemo(speed)).events, "close").map((event) => `${event.trade.symbol}:${event.trade.reason}`);
+		const atFour = await reasons(4);
+		expect(atFour).toHaveLength(8);
+		expect(atFour).toEqual(await reasons(1));
 	});
 
 	it("plays every scripted beat through the real trading core", async () => {

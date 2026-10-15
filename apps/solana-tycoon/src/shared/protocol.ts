@@ -197,6 +197,8 @@ export const EngineSnapshotSchema = z.object({
 	pinned: z.array(z.string()),
 	balanceLamports: LamportsSchema,
 	serverTime: z.number(),
+	// Engine milliseconds per wall-clock millisecond: the replay speed in demo and replay, otherwise 1.
+	clockRate: z.number().positive(),
 });
 
 export const EngineEventSchema = z.discriminatedUnion("type", [

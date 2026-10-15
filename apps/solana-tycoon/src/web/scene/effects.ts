@@ -1,4 +1,5 @@
 import { BoxGeometry, Color, DynamicDrawUsage, InstancedMesh, MeshLambertMaterial, Object3D, Vector3 } from "three";
+import { mulberry32 } from "../../shared/prng";
 import { BASE_PALETTE } from "./palettes";
 
 const MAX_PARTICLES = 220;
@@ -13,7 +14,8 @@ interface Particle {
 	spin: number;
 }
 
-const range = (min: number, max: number) => min + Math.random() * (max - min);
+const random = mulberry32(0x5eed);
+const range = (min: number, max: number) => min + random() * (max - min);
 
 // Coin and confetti voxels plus screen shake. Reduced motion turns all of it off.
 export class Effects {
@@ -58,7 +60,7 @@ export class Effects {
 					: new Vector3(range(-3, 3), range(5, 9), range(-3, 3)),
 				life: confetti ? range(2.5, 4) : range(1.2, 2),
 				color: confetti
-					? BASE_PALETTE[CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]]
+					? BASE_PALETTE[CONFETTI_COLORS[Math.floor(random() * CONFETTI_COLORS.length)]]
 					: BASE_PALETTE[13],
 				spin: range(-8, 8),
 			});

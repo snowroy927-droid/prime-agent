@@ -1214,6 +1214,16 @@ html[data-tier="fever"] .logo {
 	.chip {
 		justify-content: space-between;
 	}
+	.pips {
+		gap: 2px;
+	}
+	.pip {
+		width: 6px;
+		height: 6px;
+	}
+	.cast-role {
+		display: none;
+	}
 	.panel {
 		max-height: none;
 	}

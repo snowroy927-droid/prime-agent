@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { web3 } from "../src/engine/chain/solana";
-import { ManualClock } from "../src/engine/clock";
+import { ManualClock, ScaledClock } from "../src/engine/clock";
 import type { FeedEvent } from "../src/engine/feed/types";
 import { ReplayDriver } from "../src/engine/replay/player";
 import { Recorder } from "../src/engine/replay/recorder";
@@ -56,7 +56,7 @@ describe("Recorder and ReplayDriver", () => {
 		expect(updates).toHaveLength(1);
 
 		const replayClock = new ManualClock(0);
-		const driver = new ReplayDriver(lines, replayClock, 1);
+		const driver = new ReplayDriver(lines, replayClock);
 		const launches: FeedEvent[] = [];
 		driver.feed.on((event) => launches.push(event));
 		driver.start();
@@ -76,19 +76,19 @@ describe("Recorder and ReplayDriver", () => {
 		expect(driver.synthetic).toBe(false);
 	});
 
-	it("scales dispatch time by the replay speed", async () => {
+	it("plays faster on a scaled clock", async () => {
 		const lines: RecordingLine[] = [
 			{ t: 0, kind: "meta", synthetic: true, description: "test", createdAt: "2026-10-15T00:00:00.000Z" },
 			{ t: 1_000, kind: "feed", status: "down" },
 		];
-		const clock = new ManualClock(0);
-		const driver = new ReplayDriver(lines, clock, 2);
+		const base = new ManualClock(0);
+		const driver = new ReplayDriver(lines, new ScaledClock(base, 2));
 		const events: FeedEvent[] = [];
 		driver.feed.on((event) => events.push(event));
 		driver.start();
-		await clock.advance(499);
+		await base.advance(499);
 		expect(events).toEqual([]);
-		await clock.advance(1);
+		await base.advance(1);
 		expect(events).toEqual([{ type: "status", status: "down", dropped: 0, reconnectAt: null }]);
 		expect(driver.synthetic).toBe(true);
 	});
@@ -104,7 +104,7 @@ describe("Recorder and ReplayDriver", () => {
 		await chain.fetchCurve(MINT);
 
 		const replayClock = new ManualClock(10_000);
-		const driver = new ReplayDriver(readRecording(join(dir, "r.jsonl")), replayClock, 1);
+		const driver = new ReplayDriver(readRecording(join(dir, "r.jsonl")), replayClock);
 		const seen: number[] = [];
 		driver.chain.watchCurve(MINT, (snap) => seen.push(snap.at));
 		driver.start();

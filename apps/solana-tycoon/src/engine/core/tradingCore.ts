@@ -50,6 +50,8 @@ export interface CoreDeps {
 	bus: EngineBus;
 	settings: SettingsStore;
 	publicRpcFallback: boolean;
+	// Engine milliseconds per wall-clock millisecond (the replay speed); defaults to 1.
+	clockRate?: number;
 	tzOffsetMin: () => number;
 	onRaw?: (raw: string) => void;
 }
@@ -145,6 +147,7 @@ export class TradingCore {
 			pinned: [...this.pinned],
 			balanceLamports: this.balanceLamports().toString(),
 			serverTime: now,
+			clockRate: this.deps.clockRate ?? 1,
 		};
 	}
 

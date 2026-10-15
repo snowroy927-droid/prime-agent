@@ -13,6 +13,7 @@ import {
 	WebGLRenderTarget,
 } from "three";
 import type { TierId } from "../../shared/combo";
+import { mulberry32 } from "../../shared/prng";
 import { paletteFor } from "./palettes";
 import { POST_FRAGMENT, POST_VERTEX } from "./shaders";
 
@@ -31,6 +32,7 @@ export class PixelRenderer {
 	private readonly postCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	private tier: TierId = "terminal";
 	private shakePx = 0;
+	private readonly jitter = mulberry32(0x5a4e);
 	private reducedMotion = false;
 	private lowWidth = 320;
 
@@ -89,8 +91,8 @@ export class PixelRenderer {
 		uniforms.uChroma.value = CHROMA_PX[this.tier];
 		const shake = this.reducedMotion ? 0 : this.shakePx;
 		(uniforms.uShake.value as Vector2).set(
-			Math.round((Math.random() * 2 - 1) * shake),
-			Math.round((Math.random() * 2 - 1) * shake),
+			Math.round((this.jitter() * 2 - 1) * shake),
+			Math.round((this.jitter() * 2 - 1) * shake),
 		);
 		this.gl.setRenderTarget(this.target);
 		this.gl.render(scene, camera);

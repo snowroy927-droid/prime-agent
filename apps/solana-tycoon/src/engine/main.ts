@@ -9,7 +9,7 @@ import { RpcBudget } from "./chain/rpcBudget";
 import { web3 } from "./chain/solana";
 import type { ChainSource } from "./chain/types";
 import { parseArgs } from "./cli";
-import { RealClock } from "./clock";
+import { type Clock, RealClock, ScaledClock } from "./clock";
 import { TradingCore } from "./core/tradingCore";
 import { readEnv } from "./env";
 import { PumpPortalFeed } from "./feed/pumpportal";
@@ -41,7 +41,9 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	const clock = new RealClock();
+	const replaying = mode === "demo" || mode === "replay";
+	const clockRate = replaying ? cli.speed : 1;
+	const clock: Clock = clockRate === 1 ? new RealClock() : new ScaledClock(new RealClock(), clockRate);
 	const budget = new RpcBudget(env.rpcMaxRps, clock);
 	const bus = new EngineBus();
 	const ledger = new Ledger(join(dataDir, `ledger-${mode}.jsonl`));
@@ -54,10 +56,10 @@ async function main(): Promise<void> {
 	let onRaw: ((raw: string) => void) | undefined;
 	let publicFallback = false;
 
-	if (mode === "demo" || mode === "replay") {
+	if (replaying) {
 		const file = mode === "demo" ? join(appRoot, "fixtures", "demo-session.jsonl") : resolve(cli.replayFile ?? "");
 		if (!existsSync(file)) throw new Error(`Recording not found: ${file}`);
-		const driver = new ReplayDriver(readRecording(file), clock, cli.speed);
+		const driver = new ReplayDriver(readRecording(file), clock);
 		feed = driver.feed;
 		chain = driver.chain;
 		synthetic = driver.synthetic;
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
 		bus,
 		settings,
 		publicRpcFallback: publicFallback,
+		clockRate,
 		tzOffsetMin: () => -new Date().getTimezoneOffset(),
 		onRaw,
 	});

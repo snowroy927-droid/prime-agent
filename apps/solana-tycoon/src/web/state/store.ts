@@ -138,14 +138,21 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 		}
 		case "stats":
 			return { ...state, snapshot: { ...snapshot, stats: event.stats, launchStats: event.launchStats } };
-		case "feed":
-			return {
+		case "feed": {
+			const next = {
 				...state,
 				snapshot: {
 					...snapshot,
 					feed: { status: event.status, dropped: event.dropped, reconnectAt: event.reconnectAt },
 				},
 			};
+			if (event.dropped <= snapshot.feed.dropped) return next;
+			return addLog(next, {
+				level: "warn",
+				message: `Feed: ${event.dropped} messages dropped without a valid mint (raw samples in data/fixtures/)`,
+				at: state.now,
+			});
+		}
 		case "risk":
 			return { ...state, snapshot: { ...snapshot, risk: event.risk } };
 		case "balance":
@@ -168,6 +175,17 @@ export function sessionLamports(state: GameState): bigint {
 		total += BigInt(position.valueLamports) + BigInt(position.proceedsLamports) - BigInt(position.costLamports);
 	}
 	return total;
+}
+
+// The engine's clock at the last snapshot, so the page can follow a fast-forwarded replay.
+export interface ServerClock {
+	server: number;
+	local: number;
+	rate: number;
+}
+
+export function serverNow(clock: ServerClock | null, local: number): number {
+	return clock ? clock.server + (local - clock.local) * clock.rate : local;
 }
 
 export function tick(state: GameState, now: number): GameState {

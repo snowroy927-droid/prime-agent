@@ -114,7 +114,7 @@ export class ReplayFeed implements LaunchFeed {
 	}
 }
 
-// Plays a recording in virtual time: a line at t ms dispatches t / speed ms after start.
+// Plays a recording: a line at t ms dispatches t ms after start on the driver's clock (a ScaledClock for --speed).
 export class ReplayDriver {
 	readonly feed: ReplayFeed;
 	readonly chain: ReplayChain;
@@ -127,7 +127,6 @@ export class ReplayDriver {
 	constructor(
 		lines: readonly RecordingLine[],
 		private readonly clock: Clock,
-		private readonly speed: number,
 	) {
 		this.lines = [...lines].sort((a, b) => a.t - b.t);
 		const meta = this.lines.find((line) => line.kind === "meta");
@@ -154,7 +153,7 @@ export class ReplayDriver {
 	}
 
 	private dueAt(line: RecordingLine): number {
-		return this.startedAt + line.t / this.speed;
+		return this.startedAt + line.t;
 	}
 
 	private async run(generation: number): Promise<void> {

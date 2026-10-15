@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Ack, CommandInput, EngineEvent } from "../../shared/protocol";
 import { BridgeClient } from "../net/bridgeClient";
-import { type ConnectionStatus, type GameState, initialGameState, reduce, tick } from "./store";
+import {
+	type ConnectionStatus,
+	type GameState,
+	initialGameState,
+	reduce,
+	type ServerClock,
+	serverNow,
+	tick,
+} from "./store";
 
 // Holds game state outside React so the HUD and the canvas renderer read the same source.
 // React re-renders at most once per animation frame however many events arrive.
@@ -10,6 +18,7 @@ export class GameStore {
 	private readonly listeners = new Set<() => void>();
 	private readonly eventListeners = new Set<(event: EngineEvent, next: GameState, prev: GameState) => void>();
 	private frame: number | null = null;
+	private clock: ServerClock | null = null;
 
 	getState = (): GameState => this.state;
 
@@ -28,6 +37,9 @@ export class GameStore {
 	}
 
 	dispatch(event: EngineEvent): void {
+		if (event.type === "snapshot") {
+			this.clock = { server: event.snapshot.serverTime, local: Date.now(), rate: event.snapshot.clockRate };
+		}
 		const prev = this.state;
 		this.state = reduce(prev, event);
 		for (const listener of [...this.eventListeners]) listener(event, this.state, prev);
@@ -44,8 +56,9 @@ export class GameStore {
 		this.schedule();
 	}
 
-	tick(now: number): void {
-		this.state = tick(this.state, now);
+	// Advances the page's clock to the engine's current time, estimated from wall-clock time.
+	tick(local: number): void {
+		this.state = tick(this.state, serverNow(this.clock, local));
 		this.schedule();
 	}
 

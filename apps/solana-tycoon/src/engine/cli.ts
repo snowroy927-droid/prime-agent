@@ -61,5 +61,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		}
 	}
 	if (options.demo && options.replayFile !== null) throw new Error("Use either --demo or --replay, not both");
+	if (options.speed !== 1 && !options.demo && options.replayFile === null)
+		throw new Error("--speed only applies to --demo and --replay");
 	return options;
 }
