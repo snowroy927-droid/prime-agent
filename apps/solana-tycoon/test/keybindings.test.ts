@@ -33,6 +33,7 @@ describe("keybindings", () => {
 			mute: "m",
 			pause: "p",
 			kill: "k",
+			switchDesk: "d",
 		});
 		expect(actionForKey(DEFAULT_KEYBINDINGS, "k")).toBe("kill");
 		expect(actionForKey(DEFAULT_KEYBINDINGS, "K")).toBe("kill");

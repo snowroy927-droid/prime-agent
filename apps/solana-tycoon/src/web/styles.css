@@ -112,8 +112,9 @@ input:focus-visible {
 }
 .brand {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 10px;
+	gap: 6px 10px;
 	min-width: 0;
 }
 .logo {
@@ -146,6 +147,23 @@ html[data-tier="fever"] .logo {
 .badge-live {
 	background: var(--bad);
 	color: #210000;
+}
+.badge-kraken {
+	background: #7a5cff;
+	color: #0b0420;
+}
+.desk-switch {
+	display: inline-flex;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+.desk-switch .btn {
+	padding: 6px 8px;
+}
+.desk-switch .btn + .btn {
+	border-left: 0;
 }
 .chips {
 	display: flex;
@@ -375,6 +393,26 @@ html[data-tier="fever"] .logo {
 .v-unchecked {
 	background: #3a3f55;
 	color: #c9cde0;
+}
+.v-skip {
+	background: #3b3320;
+	color: var(--warn);
+}
+.row .kmetrics {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 10px;
+	color: var(--dim);
+	font-size: 16px;
+	font-variant-numeric: tabular-nums;
+}
+.offline-note {
+	color: var(--bad);
+	font-family: var(--font-display);
+	font-size: 9px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
 }
 .mini {
 	font-family: var(--font-display);
@@ -725,6 +763,10 @@ html[data-tier="fever"] .logo {
 	padding: 3px 5px;
 	background: #253055;
 	color: #b9c4ea;
+}
+.tag-chip.bad {
+	background: var(--bad);
+	color: #210000;
 }
 .pos .acts {
 	display: flex;

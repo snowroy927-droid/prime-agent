@@ -31,3 +31,16 @@ export function price(value: number | undefined | null): string {
 	if (value === 0) return "0";
 	return value < 0.0001 ? value.toExponential(2) : value.toPrecision(3);
 }
+
+const USD_MICROS = 1_000_000;
+
+export function usdAmount(micros: string | bigint, digits = 2): string {
+	const usd = Number(micros) / USD_MICROS;
+	return `$${usd.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+export function usdSigned(micros: string | bigint, digits = 2): string {
+	const value = BigInt(micros);
+	const text = usdAmount(value < 0n ? -value : value, digits);
+	return value > 0n ? `+${text}` : value < 0n ? `-${text}` : text;
+}

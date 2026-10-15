@@ -1,4 +1,4 @@
-import type { KrakenSettings, RuleStatus } from "../../shared/kraken";
+import { formatUsdShort, type KrakenSettings, type RuleStatus } from "../../shared/kraken";
 
 export interface RuleInput {
 	change5m: number | null;
@@ -17,12 +17,6 @@ export interface RuleInput {
 const WARM_UP_MIN = 15;
 
 const num = (value: number): string => String(Number(value.toFixed(2)));
-
-export function formatUsdShort(usd: number): string {
-	if (usd >= 1_000_000) return `$${num(usd / 1_000_000)}M`;
-	if (usd >= 1_000) return `$${Math.round(usd / 1_000)}k`;
-	return `$${Math.round(usd)}`;
-}
 
 function localClock(at: number, tzOffsetMin: number): string {
 	const local = new Date(at + tzOffsetMin * 60_000);

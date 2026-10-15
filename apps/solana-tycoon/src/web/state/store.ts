@@ -1,10 +1,26 @@
-import { activeTier, comboCount, type TierId } from "../../shared/combo";
-import { type UpgradeId, unlockedUpgrades } from "../../shared/progression";
+import { activeTier, activeTierOf, comboCount, comboCountOf, type TierId } from "../../shared/combo";
+import {
+	type KrakenClosedTrade,
+	type KrakenOrderUpdate,
+	type KrakenSnapshot,
+	krakenOutcome,
+} from "../../shared/kraken";
+import { type KrakenTrophyId, type UpgradeId, unlockedTrophies, unlockedUpgrades } from "../../shared/progression";
 import { type EngineEvent, type EngineSnapshot, PROTOCOL_VERSION } from "../../shared/protocol";
 import type { ClosedTrade, LogLine, OrderUpdate, PriceTick } from "../../shared/types";
 import { formatSol } from "../../shared/units";
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
+export type DeskId = "pump" | "kraken";
+
+// Page-side Kraken state; the engine's Kraken data lives in snapshot.kraken.
+export interface KrakenView {
+	combo: number;
+	tier: TierId;
+	trophies: KrakenTrophyId[];
+	prices: Record<string, { bid: string; ask: string; last: string; at: number }>;
+	orders: Record<string, KrakenOrderUpdate>;
+}
 
 export interface GameState {
 	connection: ConnectionStatus;
@@ -18,6 +34,9 @@ export interface GameState {
 	prices: Record<string, PriceTick>;
 	orders: Record<string, OrderUpdate>;
 	sessionStart: number | null;
+	desk: DeskId;
+	selectedPair: string | null;
+	kraken: KrakenView;
 }
 
 const RADAR_MAX = 50;
@@ -37,6 +56,9 @@ export function initialGameState(): GameState {
 		prices: {},
 		orders: {},
 		sessionStart: null,
+		desk: "pump",
+		selectedPair: null,
+		kraken: { combo: 0, tier: "terminal", trophies: [], prices: {}, orders: {} },
 	};
 }
 
@@ -48,6 +70,33 @@ function withDerived(state: GameState, closes: readonly ClosedTrade[], now: numb
 		tier: activeTier(closes, now),
 		upgrades: unlockedUpgrades(closes),
 	};
+}
+
+function withKrakenDerived(state: GameState, closes: readonly KrakenClosedTrade[], now: number): GameState {
+	const outcomes = closes.map(krakenOutcome);
+	return {
+		...state,
+		kraken: {
+			...state.kraken,
+			combo: comboCountOf(outcomes),
+			tier: activeTierOf(outcomes, now),
+			trophies: unlockedTrophies(outcomes),
+		},
+	};
+}
+
+// The selected desk, falling back to pump.fun while the Kraken desk is off.
+export function activeDesk(state: GameState): DeskId {
+	return state.desk === "kraken" && state.snapshot?.kraken ? "kraken" : "pump";
+}
+
+export function withDesk(state: GameState, desk: DeskId): GameState {
+	return { ...state, desk };
+}
+
+// The screen palette follows the selected desk's own streak.
+export function screenTier(state: GameState): TierId {
+	return activeDesk(state) === "kraken" ? state.kraken.tier : state.tier;
 }
 
 function addLog(state: GameState, line: LogLine): GameState {
@@ -73,7 +122,8 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 	if (event.type === "snapshot") {
 		const snapshot = event.snapshot;
 		const now = Math.max(state.now, snapshot.serverTime);
-		return withDerived({ ...state, snapshot, sessionStart: snapshot.startedAt }, snapshot.closes, now);
+		const next = withDerived({ ...state, snapshot, sessionStart: snapshot.startedAt }, snapshot.closes, now);
+		return withKrakenDerived(next, snapshot.kraken?.closes ?? [], now);
 	}
 	if (event.type === "log") return addLog(state, event.line);
 	const snapshot = state.snapshot;
@@ -161,19 +211,72 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 			return { ...state, snapshot: { ...snapshot, settings: event.settings } };
 		case "pinned":
 			return { ...state, snapshot: { ...snapshot, pinned: event.mints } };
+		default:
+			return reduceKraken(state, snapshot, event);
+	}
+}
+
+// Kraken events update snapshot.kraken; the desk logs its own fills and closes on the shared log event.
+function reduceKraken(state: GameState, snapshot: EngineSnapshot, event: EngineEvent): GameState {
+	const kraken = snapshot.kraken;
+	if (!kraken) return state;
+	const set = (patch: Partial<KrakenSnapshot>): GameState => ({
+		...state,
+		snapshot: { ...snapshot, kraken: { ...kraken, ...patch } },
+	});
+	switch (event.type) {
 		case "kraken_movers":
-		case "kraken_price":
+			return set({ movers: event.movers });
+		case "kraken_price": {
+			const { pair, bid, ask, last, at } = event;
+			return {
+				...state,
+				kraken: { ...state.kraken, prices: { ...state.kraken.prices, [pair]: { bid, ask, last, at } } },
+			};
+		}
 		case "kraken_order":
-		case "kraken_position":
-		case "kraken_close":
+			return {
+				...state,
+				kraken: { ...state.kraken, orders: { ...state.kraken.orders, [event.order.pair]: event.order } },
+			};
+		case "kraken_position": {
+			const exists = kraken.positions.some((position) => position.id === event.position.id);
+			const positions = exists
+				? kraken.positions.map((position) => (position.id === event.position.id ? event.position : position))
+				: [...kraken.positions, event.position];
+			return set({ positions });
+		}
+		case "kraken_close": {
+			const closes = [...kraken.closes, event.trade].slice(-CLOSES_MAX);
+			const positions = kraken.positions.filter((position) => position.id !== event.trade.positionId);
+			const now = Math.max(state.now, event.trade.closedAt);
+			return withKrakenDerived({ ...set({ closes, positions }), now }, closes, now);
+		}
 		case "kraken_stats":
-		case "kraken_feed":
+			return set({ stats: event.stats, scanStats: event.scanStats });
+		case "kraken_feed": {
+			const next = set({ feed: { status: event.status, dropped: event.dropped, reconnectAt: event.reconnectAt } });
+			if (magnitude(event.dropped) <= magnitude(kraken.feed.dropped)) return next;
+			const noun = event.dropped === 1 ? "message" : "messages";
+			return addLog(next, {
+				level: "warn",
+				message: `Kraken: ${event.dropped} ${noun} dropped (raw samples in data/fixtures/)`,
+				at: state.now,
+			});
+		}
 		case "kraken_risk":
+			return set({ risk: event.risk });
 		case "kraken_balance":
+			return set({ balanceUsdMicros: event.usdMicros });
 		case "kraken_settings":
+			return set({ settings: event.settings });
 		case "kraken_pinned":
+			return set({ pinned: event.pairs });
 		case "kraken_sol_usd":
+			return set({ solUsd: { price: event.price, at: event.at } });
 		case "kraken_offline":
+			return set({ error: event.error });
+		default:
 			return state;
 	}
 }
@@ -191,6 +294,18 @@ export function sessionLamports(state: GameState): bigint {
 	return total;
 }
 
+export function krakenSessionUsdMicros(state: GameState): bigint {
+	const kraken = state.snapshot?.kraken;
+	if (!kraken || state.sessionStart === null) return 0n;
+	let total = 0n;
+	for (const trade of kraken.closes) if (trade.closedAt >= state.sessionStart) total += BigInt(trade.pnlUsdMicros);
+	for (const position of kraken.positions) {
+		if (position.valueUsdMicros === null) continue;
+		total += BigInt(position.valueUsdMicros) + BigInt(position.proceedsUsdMicros) - BigInt(position.costUsdMicros);
+	}
+	return total;
+}
+
 // The engine's clock at the last snapshot, so the page can follow a fast-forwarded replay.
 export interface ServerClock {
 	server: number;
@@ -204,5 +319,11 @@ export function serverNow(clock: ServerClock | null, local: number): number {
 
 export function tick(state: GameState, now: number): GameState {
 	const closes = state.snapshot?.closes ?? [];
-	return { ...state, now, tier: activeTier(closes, now) };
+	const krakenCloses = state.snapshot?.kraken?.closes ?? [];
+	return {
+		...state,
+		now,
+		tier: activeTier(closes, now),
+		kraken: { ...state.kraken, tier: activeTierOf(krakenCloses.map(krakenOutcome), now) },
+	};
 }

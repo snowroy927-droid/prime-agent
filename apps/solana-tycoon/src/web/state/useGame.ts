@@ -3,18 +3,30 @@ import type { Ack, CommandInput, EngineEvent } from "../../shared/protocol";
 import { BridgeClient } from "../net/bridgeClient";
 import {
 	type ConnectionStatus,
+	type DeskId,
 	type GameState,
 	initialGameState,
 	reduce,
 	type ServerClock,
 	serverNow,
 	tick,
+	withDesk,
 } from "./store";
+
+const DESK_KEY = "super-c-sniper.desk";
+
+function loadDesk(): DeskId {
+	try {
+		return localStorage.getItem(DESK_KEY) === "kraken" ? "kraken" : "pump";
+	} catch {
+		return "pump";
+	}
+}
 
 // Holds game state outside React so the HUD and the canvas renderer read the same source.
 // React re-renders at most once per animation frame however many events arrive.
 export class GameStore {
-	private state: GameState = tick(initialGameState(), Date.now());
+	private state: GameState = withDesk(tick(initialGameState(), Date.now()), loadDesk());
 	private readonly listeners = new Set<() => void>();
 	private readonly eventListeners = new Set<(event: EngineEvent, next: GameState, prev: GameState) => void>();
 	private frame: number | null = null;
@@ -53,6 +65,22 @@ export class GameStore {
 
 	select(selectedMint: string | null): void {
 		this.state = { ...this.state, selectedMint };
+		this.schedule();
+	}
+
+	selectPair(selectedPair: string | null): void {
+		this.state = { ...this.state, selectedPair };
+		this.schedule();
+	}
+
+	// The desk choice is remembered in this browser.
+	selectDesk(desk: DeskId): void {
+		this.state = withDesk(this.state, desk);
+		try {
+			localStorage.setItem(DESK_KEY, desk);
+		} catch {
+			// Storage unavailable: the choice lasts for this page only.
+		}
 		this.schedule();
 	}
 

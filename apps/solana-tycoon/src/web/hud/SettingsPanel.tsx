@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { Settings } from "../../shared/settings";
 import { ACTION_LABELS, type ActionId } from "./keybindings";
+import type { Section } from "./settingsFields";
 
 interface Props {
-	settings: Settings;
+	title: string;
+	sections: Section[];
+	settings: object;
+	auto: { key: string; label: string; value: boolean };
 	bindings: Record<ActionId, string>;
 	reducedMotion: boolean;
 	onSave: (patch: Record<string, unknown>) => Promise<string | null>;
@@ -12,71 +15,7 @@ interface Props {
 	onClose: () => void;
 }
 
-type FieldKind = "number" | "numberList" | "textList";
-
-interface Field {
-	path: string;
-	label: string;
-	kind: FieldKind;
-	hint: string;
-}
-
-const SECTIONS: { title: string; fields: Field[] }[] = [
-	{
-		title: "TRADING",
-		fields: [
-			{ path: "buySol", label: "BUY SIZE (SOL)", kind: "number", hint: "Max 1 SOL" },
-			{ path: "maxPositions", label: "MAX POSITIONS", kind: "number", hint: "Max 10" },
-			{ path: "takeProfitPct", label: "TAKE PROFIT %", kind: "number", hint: "Sell all at this gain" },
-			{ path: "stopLossPct", label: "STOP LOSS %", kind: "number", hint: "Sell all at this loss" },
-			{ path: "trailingStopPct", label: "TRAILING STOP %", kind: "number", hint: "0 turns it off" },
-			{ path: "maxHoldMin", label: "MAX HOLD (MIN)", kind: "number", hint: "Sell after this long" },
-			{
-				path: "dailyLossCapSol",
-				label: "DAILY LOSS CAP (SOL)",
-				kind: "number",
-				hint: "Auto-snipe stops until midnight",
-			},
-			{ path: "tiltLosses", label: "TILT AFTER LOSSES", kind: "number", hint: "Consecutive losing closes" },
-			{ path: "tiltCooldownMin", label: "TILT COOLDOWN (MIN)", kind: "number", hint: "Auto-snipe pause" },
-			{ path: "snipeDelaySec", label: "CHECK DELAY (S)", kind: "number", hint: "Wait before the rug check" },
-			{ path: "recheckDelaysSec", label: "RE-CHECKS (S)", kind: "numberList", hint: "Comma separated, from launch" },
-			{ path: "priceStaleSec", label: "STALE AFTER (S)", kind: "number", hint: "No auto exits on older prices" },
-		],
-	},
-	{
-		title: "RUG CHECK",
-		fields: [
-			{ path: "rug.blocklist", label: "NAME BLOCKLIST", kind: "textList", hint: "Comma separated words" },
-			{
-				path: "rug.serialLaunchMax",
-				label: "SERIAL LAUNCH MAX",
-				kind: "number",
-				hint: "Coins per creator in the window",
-			},
-			{ path: "rug.serialWindowMin", label: "SERIAL WINDOW (MIN)", kind: "number", hint: "Creator history window" },
-			{ path: "rug.maxTopHolderPct", label: "MAX TOP HOLDER %", kind: "number", hint: "Excluding the curve" },
-			{ path: "rug.minHoldersInTop20", label: "MIN HOLDERS IN TOP 20", kind: "number", hint: "0 to 20" },
-			{ path: "rug.minRealSol", label: "MIN REAL SOL", kind: "number", hint: "SOL already in the curve" },
-		],
-	},
-	{
-		title: "PAPER FILLS",
-		fields: [
-			{ path: "paper.startingBalanceSol", label: "STARTING BALANCE (SOL)", kind: "number", hint: "Paper wallet" },
-			{ path: "paper.latencyMs", label: "FILL LATENCY (MS)", kind: "number", hint: "Simulated confirmation time" },
-			{
-				path: "paper.extraSlippageBps",
-				label: "EXTRA SLIPPAGE (BPS)",
-				kind: "number",
-				hint: "Haircut on every fill",
-			},
-			{ path: "paper.priorityFeeSol", label: "PRIORITY FEE (SOL)", kind: "number", hint: "Per transaction" },
-		],
-	},
-];
-
-function read(settings: Settings, path: string): unknown {
+function read(settings: object, path: string): unknown {
 	return path.split(".").reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], settings);
 }
 
@@ -99,7 +38,10 @@ function displayKey(key: string): string {
 }
 
 export function SettingsPanel({
+	title,
+	sections,
 	settings,
+	auto,
 	bindings,
 	reducedMotion,
 	onSave,
@@ -109,10 +51,10 @@ export function SettingsPanel({
 }: Props) {
 	const [values, setValues] = useState<Record<string, string>>(() =>
 		Object.fromEntries(
-			SECTIONS.flatMap((section) => section.fields).map((field) => [field.path, toText(read(settings, field.path))]),
+			sections.flatMap((section) => section.fields).map((field) => [field.path, toText(read(settings, field.path))]),
 		),
 	);
-	const [autoSnipe, setAutoSnipe] = useState(settings.autoSnipe);
+	const [autoOn, setAutoOn] = useState(auto.value);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [listening, setListening] = useState<ActionId | null>(null);
@@ -142,10 +84,12 @@ export function SettingsPanel({
 	}, [listening, bindings, onBindings, onClose]);
 
 	const save = async () => {
-		const patch: Record<string, unknown> = { autoSnipe };
-		for (const field of SECTIONS.flatMap((section) => section.fields)) {
+		const patch: Record<string, unknown> = { [auto.key]: autoOn };
+		for (const field of sections.flatMap((section) => section.fields)) {
 			const text = values[field.path].trim();
-			if (field.kind === "number") {
+			if (field.kind === "boolean") {
+				assign(patch, field.path, text === "true");
+			} else if (field.kind === "number") {
 				const number = Number(text);
 				if (text === "" || !Number.isFinite(number)) {
 					setError(`${field.label} must be a number`);
@@ -181,22 +125,43 @@ export function SettingsPanel({
 		<div className="modal">
 			<div className="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
 				<div className="sheet-head">
-					<h3 id="settings-title">SETTINGS</h3>
+					<h3 id="settings-title">{title}</h3>
 					<button type="button" className="btn" onClick={onClose}>
 						CLOSE
 					</button>
 				</div>
 				<label className="toggle">
-					<input type="checkbox" checked={autoSnipe} onChange={(event) => setAutoSnipe(event.target.checked)} />
-					<span>AUTO-SNIPE APPROVED LAUNCHES</span>
+					<input type="checkbox" checked={autoOn} onChange={(event) => setAutoOn(event.target.checked)} />
+					<span>{auto.label}</span>
 				</label>
-				{SECTIONS.map((section) => (
+				{sections.map((section) => (
 					<fieldset key={section.title} className="form-section">
 						<legend>{section.title}</legend>
 						<div className="form">
 							{section.fields.map((field) => {
 								const ref = first ? firstInput : undefined;
 								first = false;
+								if (field.kind === "boolean") {
+									return (
+										<div key={field.path} className="field">
+											<label className="toggle" htmlFor={`f-${field.path}`}>
+												<input
+													id={`f-${field.path}`}
+													type="checkbox"
+													checked={values[field.path] === "true"}
+													onChange={(event) =>
+														setValues((current) => ({
+															...current,
+															[field.path]: String(event.target.checked),
+														}))
+													}
+												/>
+												<span>{field.label}</span>
+											</label>
+											<span className="hint">{field.hint}</span>
+										</div>
+									);
+								}
 								return (
 									<div key={field.path} className="field">
 										<label htmlFor={`f-${field.path}`}>{field.label}</label>

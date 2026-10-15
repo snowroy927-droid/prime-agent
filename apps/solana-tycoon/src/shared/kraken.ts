@@ -172,6 +172,14 @@ export function applyKrakenSettingsPatch(current: KrakenSettings, patch: unknown
 	return { ok: true, settings };
 }
 
+// $1.2M, $250k, $900: for volumes on the radar and in rule reasons.
+export function formatUsdShort(usd: number): string {
+	const short = (value: number) => String(Number(value.toFixed(2)));
+	if (usd >= 1_000_000) return `$${short(usd / 1_000_000)}M`;
+	if (usd >= 1_000) return `$${Math.round(usd / 1_000)}k`;
+	return `$${Math.round(usd)}`;
+}
+
 export function krakenOutcome(trade: KrakenClosedTrade): Outcome {
 	return { pnl: BigInt(trade.pnlUsdMicros), openedAt: trade.openedAt, closedAt: trade.closedAt, reason: trade.reason };
 }

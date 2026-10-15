@@ -2,20 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Ack, CommandInput } from "../shared/protocol";
 import { Sfx } from "./audio/sfx";
 import { Analytics } from "./hud/Analytics";
-import { type HudActions, holdRequired } from "./hud/actions";
+import { type HudActions, holdRequired, type KrakenActions, krakenHoldRequired } from "./hud/actions";
 import { Banner } from "./hud/Banner";
 import { EventLog } from "./hud/EventLog";
 import { Hotbar } from "./hud/Hotbar";
+import { KrakenDeskPanel } from "./hud/KrakenDesk";
+import { KrakenRadar } from "./hud/KrakenRadar";
 import { type ActionId, actionForKey, loadKeybindings, saveKeybindings } from "./hud/keybindings";
 import { Offline } from "./hud/Offline";
 import { Positions } from "./hud/Positions";
 import { Radar } from "./hud/Radar";
 import { SettingsPanel } from "./hud/SettingsPanel";
+import { KRAKEN_SECTIONS, PUMP_SECTIONS } from "./hud/settingsFields";
 import { TopBar } from "./hud/TopBar";
 import { useHold } from "./hud/useHold";
 import { reactionsFor } from "./scene/director";
 import { hudColors } from "./scene/palettes";
 import { SceneView } from "./scene/SceneView";
+import { activeDesk, screenTier } from "./state/store";
 import { useGame } from "./state/useGame";
 
 const HOTBAR_ACTIONS: ActionId[] = ["hotbar1", "hotbar2", "hotbar3", "hotbar4", "hotbar5", "hotbar6"];
@@ -96,13 +100,16 @@ export function App() {
 		return () => clearTimeout(timer);
 	}, [banner]);
 
+	const desk = activeDesk(state);
+	const tier = screenTier(state);
 	useEffect(() => {
 		const root = document.documentElement;
-		root.dataset.tier = state.tier;
-		const colors = hudColors(state.tier);
+		root.dataset.tier = tier;
+		root.dataset.desk = desk;
+		const colors = hudColors(tier);
 		root.style.setProperty("--accent", colors.accent);
 		root.style.setProperty("--bad", colors.danger);
-	}, [state.tier]);
+	}, [tier, desk]);
 	useEffect(() => {
 		document.documentElement.dataset.reducedMotion = String(reducedMotion);
 	}, [reducedMotion]);
@@ -137,6 +144,7 @@ export function App() {
 	);
 
 	const snapshot = state.snapshot;
+	const kraken = snapshot?.kraken ?? null;
 	const actions: HudActions = useMemo(() => {
 		const needsHold = (mint: string): boolean => holdRequired(snapshot, mint, state.now);
 		return {
@@ -149,10 +157,26 @@ export function App() {
 		};
 	}, [snapshot, state.now, run, store]);
 
+	const krakenActions: KrakenActions = useMemo(() => {
+		const needsHold = (pair: string): boolean => krakenHoldRequired(snapshot, pair, state.now);
+		return {
+			buy: (pair, holdConfirmed) => void run({ type: "kraken_buy", pair, holdConfirmed }),
+			sell: (pair, pct) => void run({ type: "kraken_sell", pair, pct }),
+			pin: (pair) => void run({ type: "kraken_pin", pair }),
+			unpin: (pair) => void run({ type: "kraken_unpin", pair }),
+			select: (pair) => store.selectPair(pair),
+			needsHold,
+		};
+	}, [snapshot, state.now, run, store]);
+
 	useEffect(() => {
 		const holdOrRun = (id: string, mint: string) => {
 			if (actions.needsHold(mint)) hold.start(id, () => actions.snipe(mint, true));
 			else actions.snipe(mint, false);
+		};
+		const holdOrBuy = (id: string, pair: string) => {
+			if (krakenActions.needsHold(pair)) hold.start(id, () => krakenActions.buy(pair, true));
+			else krakenActions.buy(pair, false);
 		};
 		const onDown = (event: KeyboardEvent) => {
 			if (settingsOpen || analyticsOpen || isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey)
@@ -169,9 +193,38 @@ export function App() {
 			event.preventDefault();
 			if (event.repeat && action !== "radarUp" && action !== "radarDown") return;
 			const current = store.getState();
+			const kraken = current.snapshot?.kraken ?? null;
+			if (action === "switchDesk") {
+				if (kraken) store.selectDesk(activeDesk(current) === "kraken" ? "pump" : "kraken");
+				return;
+			}
+			const hotbar = HOTBAR_ACTIONS.indexOf(action);
+			if (activeDesk(current) === "kraken" && kraken) {
+				if (hotbar >= 0) {
+					const pair = kraken.pinned[hotbar];
+					if (pair) holdOrBuy(`hotbar:${pair}`, pair);
+					return;
+				}
+				switch (action) {
+					case "radarUp":
+					case "radarDown": {
+						if (kraken.movers.length === 0) return;
+						const index = kraken.movers.findIndex((mover) => mover.pair === current.selectedPair);
+						const step = action === "radarUp" ? -1 : 1;
+						const next = index === -1 ? 0 : Math.min(kraken.movers.length - 1, Math.max(0, index + step));
+						store.selectPair(kraken.movers[next].pair);
+						return;
+					}
+					case "snipeSelected":
+						if (current.selectedPair) holdOrBuy(`kbuy:${current.selectedPair}`, current.selectedPair);
+						return;
+					case "pause":
+						void run({ type: kraken.risk.paused ? "kraken_resume" : "kraken_pause" });
+						return;
+				}
+			}
 			const pinned = current.snapshot?.pinned ?? [];
 			const launches = current.snapshot?.launches ?? [];
-			const hotbar = HOTBAR_ACTIONS.indexOf(action);
 			if (hotbar >= 0) {
 				const mint = pinned[hotbar];
 				if (mint) holdOrRun(`hotbar:${mint}`, mint);
@@ -214,7 +267,7 @@ export function App() {
 			window.removeEventListener("keydown", onDown);
 			window.removeEventListener("keyup", onUp);
 		};
-	}, [actions, analyticsOpen, bindings, hold, openAnalytics, run, settingsOpen, store]);
+	}, [actions, krakenActions, analyticsOpen, bindings, hold, openAnalytics, run, settingsOpen, store]);
 
 	const updateBindings = useCallback((next: typeof bindings) => {
 		saveKeybindings(next);
@@ -225,10 +278,19 @@ export function App() {
 		<div className="app" data-tab={tab}>
 			<TopBar
 				state={state}
+				onDesk={(next) => store.selectDesk(next)}
 				muted={muted}
 				hold={hold}
-				onPause={() => void run({ type: snapshot?.risk.paused ? "resume" : "pause" })}
-				onAuto={() => void run({ type: "setSettings", patch: { autoSnipe: !snapshot?.settings.autoSnipe } })}
+				onPause={() => {
+					if (desk === "kraken" && kraken)
+						void run({ type: kraken.risk.paused ? "kraken_resume" : "kraken_pause" });
+					else void run({ type: snapshot?.risk.paused ? "resume" : "pause" });
+				}}
+				onAuto={() => {
+					if (desk === "kraken" && kraken)
+						void run({ type: "kraken_setSettings", patch: { autoBuy: !kraken.settings.autoBuy } });
+					else void run({ type: "setSettings", patch: { autoSnipe: !snapshot?.settings.autoSnipe } });
+				}}
 				onMute={() =>
 					setMuted((value) => {
 						writePref("muted", !value);
@@ -241,11 +303,15 @@ export function App() {
 				onKill={() => void run({ type: "kill" })}
 			/>
 			<main className="main">
-				<Radar state={state} actions={actions} hold={hold} />
+				{desk === "kraken" ? (
+					<KrakenRadar state={state} actions={krakenActions} hold={hold} />
+				) : (
+					<Radar state={state} actions={actions} hold={hold} />
+				)}
 				<section className="center" aria-label="Office">
 					<div className="scene-wrap" data-scene="true">
 						<SceneView store={store} reducedMotion={reducedMotion} onOpenAnalytics={openAnalytics} />
-						<Banner banner={banner} tier={state.tier} />
+						<Banner banner={banner} tier={tier} />
 						<Offline connection={state.connection} retryAt={() => game.client.retryAt()} />
 					</div>
 					<div className="tabs" role="tablist" aria-label="Panels">
@@ -268,10 +334,21 @@ export function App() {
 							DESK
 						</button>
 					</div>
-					<Hotbar state={state} actions={actions} hold={hold} bindings={bindings} />
+					<Hotbar
+						state={state}
+						desk={desk}
+						actions={actions}
+						krakenActions={krakenActions}
+						hold={hold}
+						bindings={bindings}
+					/>
 					<EventLog lines={state.log} />
 				</section>
-				<Positions state={state} actions={actions} />
+				{desk === "kraken" ? (
+					<KrakenDeskPanel state={state} actions={krakenActions} />
+				) : (
+					<Positions state={state} actions={actions} />
+				)}
 			</main>
 			{toast ? (
 				<div key={toast.id} className="toast" role="alert">
@@ -281,11 +358,21 @@ export function App() {
 			{analyticsOpen && snapshot ? <Analytics state={state} onClose={closeAnalytics} /> : null}
 			{settingsOpen && snapshot ? (
 				<SettingsPanel
-					settings={snapshot.settings}
+					key={desk}
+					title={desk === "kraken" ? "KRAKEN SETTINGS" : "PUMP.FUN SETTINGS"}
+					sections={desk === "kraken" ? KRAKEN_SECTIONS : PUMP_SECTIONS}
+					settings={desk === "kraken" && kraken ? kraken.settings : snapshot.settings}
+					auto={
+						desk === "kraken" && kraken
+							? { key: "autoBuy", label: "AUTO-BUY ELIGIBLE MOVERS", value: kraken.settings.autoBuy }
+							: { key: "autoSnipe", label: "AUTO-SNIPE APPROVED LAUNCHES", value: snapshot.settings.autoSnipe }
+					}
 					bindings={bindings}
 					reducedMotion={reducedPref}
 					onSave={async (patch) => {
-						const ack = await run({ type: "setSettings", patch });
+						const ack = await run(
+							desk === "kraken" ? { type: "kraken_setSettings", patch } : { type: "setSettings", patch },
+						);
 						return ack?.ok ? null : (ack?.error ?? "Engine offline");
 					}}
 					onBindings={updateBindings}

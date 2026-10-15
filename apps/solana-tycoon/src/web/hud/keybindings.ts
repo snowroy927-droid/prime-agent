@@ -11,7 +11,8 @@ export type ActionId =
 	| "analytics"
 	| "mute"
 	| "pause"
-	| "kill";
+	| "kill"
+	| "switchDesk";
 
 export const DEFAULT_KEYBINDINGS: Record<ActionId, string> = {
 	hotbar1: "1",
@@ -27,6 +28,7 @@ export const DEFAULT_KEYBINDINGS: Record<ActionId, string> = {
 	mute: "m",
 	pause: "p",
 	kill: "k",
+	switchDesk: "d",
 };
 
 export const ACTION_LABELS: Record<ActionId, string> = {
@@ -43,6 +45,7 @@ export const ACTION_LABELS: Record<ActionId, string> = {
 	mute: "Mute",
 	pause: "Pause / resume",
 	kill: "Kill switch (hold)",
+	switchDesk: "Switch desk",
 };
 
 export interface KeyStorage {

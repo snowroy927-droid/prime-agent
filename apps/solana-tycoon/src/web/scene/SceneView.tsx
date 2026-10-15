@@ -10,6 +10,7 @@ import {
 	Vector2,
 	Vector3,
 } from "three";
+import { screenTier } from "../state/store";
 import type { GameStore } from "../state/useGame";
 import { Character } from "./cast/character";
 import { ceoMood, reactionsFor } from "./director";
@@ -213,7 +214,7 @@ export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 			}
 			effects.setMotion(motion);
 			effects.update(dt);
-			renderer.setTier(state.tier);
+			renderer.setTier(screenTier(state));
 			renderer.setReducedMotion(!motion);
 			renderer.setShake(effects.shakeAmount(now));
 			office.setUpgrades(state.upgrades);
