@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Ack, CommandInput } from "../shared/protocol";
 import { Sfx } from "./audio/sfx";
+import { Analytics } from "./hud/Analytics";
 import type { HudActions } from "./hud/actions";
 import { Banner } from "./hud/Banner";
 import { EventLog } from "./hud/EventLog";
@@ -68,6 +69,8 @@ export function App() {
 	const systemReduced = useMediaQuery("(prefers-reduced-motion: reduce)");
 	const reducedMotion = reducedPref || systemReduced;
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [analyticsOpen, setAnalyticsOpen] = useState(false);
+	const analyticsButton = useRef<HTMLButtonElement | null>(null);
 	const [tab, setTab] = useState<"radar" | "desk">("radar");
 	const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
 	const [banner, setBanner] = useState<{ id: number; text: string } | null>(null);
@@ -109,6 +112,14 @@ export function App() {
 		return () => clearTimeout(timer);
 	}, [toast]);
 
+	const openAnalytics = useCallback(() => {
+		if (store.getState().snapshot) setAnalyticsOpen(true);
+	}, [store]);
+	const closeAnalytics = useCallback(() => {
+		setAnalyticsOpen(false);
+		analyticsButton.current?.focus();
+	}, []);
+
 	const notify = useCallback((text: string) => setToast((current) => ({ id: (current?.id ?? 0) + 1, text })), []);
 
 	const run = useCallback(
@@ -149,9 +160,17 @@ export function App() {
 			else actions.snipe(mint, false);
 		};
 		const onDown = (event: KeyboardEvent) => {
-			if (settingsOpen || isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+			if (settingsOpen || analyticsOpen || isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey)
+				return;
 			const action = actionForKey(bindings, event.key);
-			if (!action || action === "analytics") return;
+			if (!action) return;
+			if (action === "analytics") {
+				// Bound to Tab, it opens the terminal only while no control has focus, so Tab still navigates the HUD.
+				if (event.key === "Tab" && (event.shiftKey || document.activeElement !== document.body)) return;
+				event.preventDefault();
+				openAnalytics();
+				return;
+			}
 			event.preventDefault();
 			if (event.repeat && action !== "radarUp" && action !== "radarDown") return;
 			const current = store.getState();
@@ -200,7 +219,7 @@ export function App() {
 			window.removeEventListener("keydown", onDown);
 			window.removeEventListener("keyup", onUp);
 		};
-	}, [actions, bindings, hold, run, settingsOpen, store]);
+	}, [actions, analyticsOpen, bindings, hold, openAnalytics, run, settingsOpen, store]);
 
 	const updateBindings = useCallback((next: typeof bindings) => {
 		saveKeybindings(next);
@@ -222,13 +241,15 @@ export function App() {
 					})
 				}
 				onSettings={() => setSettingsOpen(true)}
+				onAnalytics={openAnalytics}
+				analyticsRef={analyticsButton}
 				onKill={() => void run({ type: "kill" })}
 			/>
 			<main className="main">
 				<Radar state={state} actions={actions} hold={hold} />
 				<section className="center" aria-label="Office">
 					<div className="scene-wrap" data-scene="true">
-						<SceneView store={store} reducedMotion={reducedMotion} />
+						<SceneView store={store} reducedMotion={reducedMotion} onOpenAnalytics={openAnalytics} />
 						<Banner banner={banner} tier={state.tier} />
 						<Offline connection={state.connection} retryAt={() => game.client.retryAt()} />
 					</div>
@@ -262,6 +283,7 @@ export function App() {
 					{toast.text}
 				</div>
 			) : null}
+			{analyticsOpen && snapshot ? <Analytics state={state} onClose={closeAnalytics} /> : null}
 			{settingsOpen && snapshot ? (
 				<SettingsPanel
 					settings={snapshot.settings}

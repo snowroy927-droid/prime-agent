@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { type GameState, sessionLamports } from "../state/store";
 import { age, clockTime, solAmount, solSigned } from "./format";
 import { HoldButton } from "./HoldButton";
@@ -11,6 +12,8 @@ interface Props {
 	onAuto: () => void;
 	onMute: () => void;
 	onSettings: () => void;
+	onAnalytics: () => void;
+	analyticsRef: Ref<HTMLButtonElement>;
 	onKill: () => void;
 }
 
@@ -25,7 +28,18 @@ function Pips({ on, total, bad }: { on: number; total: number; bad?: boolean }) 
 	);
 }
 
-export function TopBar({ state, muted, hold, onPause, onAuto, onMute, onSettings, onKill }: Props) {
+export function TopBar({
+	state,
+	muted,
+	hold,
+	onPause,
+	onAuto,
+	onMute,
+	onSettings,
+	onAnalytics,
+	analyticsRef,
+	onKill,
+}: Props) {
 	const snapshot = state.snapshot;
 	const badge = !snapshot ? "OFFLINE" : snapshot.synthetic ? "SYNTHETIC DEMO" : snapshot.mode.toUpperCase();
 	const session = sessionLamports(state);
@@ -126,6 +140,9 @@ export function TopBar({ state, muted, hold, onPause, onAuto, onMute, onSettings
 				</button>
 				<button type="button" className="btn" onClick={onMute} aria-pressed={!muted}>
 					{muted ? "MUTED" : "SOUND"}
+				</button>
+				<button ref={analyticsRef} type="button" className="btn" disabled={!snapshot} onClick={onAnalytics}>
+					ANALYTICS
 				</button>
 				<button type="button" className="btn" onClick={onSettings}>
 					SETTINGS

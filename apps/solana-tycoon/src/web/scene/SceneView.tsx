@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { AmbientLight, Color, DirectionalLight, type Mesh, OrthographicCamera, Scene, Vector3 } from "three";
+import {
+	AmbientLight,
+	Color,
+	DirectionalLight,
+	type Mesh,
+	OrthographicCamera,
+	Raycaster,
+	Scene,
+	Vector2,
+	Vector3,
+} from "three";
 import type { GameStore } from "../state/useGame";
 import { Character } from "./cast/character";
 import { ceoMood, reactionsFor } from "./director";
@@ -34,17 +44,22 @@ function fitCamera(camera: OrthographicCamera, aspect: number): void {
 interface Props {
 	store: GameStore;
 	reducedMotion: boolean;
+	onOpenAnalytics: () => void;
 }
 
-export function SceneView({ store, reducedMotion }: Props) {
+export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const overlayRef = useRef<HTMLDivElement | null>(null);
 	const reducedRef = useRef(reducedMotion);
+	const openRef = useRef(onOpenAnalytics);
 	const [failure, setFailure] = useState<string | null>(null);
 
 	useEffect(() => {
 		reducedRef.current = reducedMotion;
 	}, [reducedMotion]);
+	useEffect(() => {
+		openRef.current = onOpenAnalytics;
+	}, [onOpenAnalytics]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -118,6 +133,29 @@ export function SceneView({ store, reducedMotion }: Props) {
 		camera.position.copy(CAMERA_TARGET).addScaledVector(CAMERA_DIRECTION, 80);
 		camera.lookAt(CAMERA_TARGET);
 
+		// GLOOP (the CFO) and their monitor open the analytics terminal.
+		const raycaster = new Raycaster();
+		const pointer = new Vector2();
+		const analyticsTargets = [office.screens.cfo, cast.gloop.root];
+		const overAnalytics = (event: MouseEvent): boolean => {
+			const rect = canvas.getBoundingClientRect();
+			if (rect.width === 0 || rect.height === 0) return false;
+			pointer.set(
+				((event.clientX - rect.left) / rect.width) * 2 - 1,
+				1 - ((event.clientY - rect.top) / rect.height) * 2,
+			);
+			raycaster.setFromCamera(pointer, camera);
+			return raycaster.intersectObjects(analyticsTargets, true).length > 0;
+		};
+		const onClick = (event: MouseEvent) => {
+			if (overAnalytics(event)) openRef.current();
+		};
+		const onPointerMove = (event: PointerEvent) => {
+			canvas.style.cursor = overAnalytics(event) ? "pointer" : "";
+		};
+		canvas.addEventListener("click", onClick);
+		canvas.addEventListener("pointermove", onPointerMove);
+
 		const resize = () => {
 			renderer.resize();
 			fitCamera(camera, renderer.aspect());
@@ -185,6 +223,8 @@ export function SceneView({ store, reducedMotion }: Props) {
 		return () => {
 			cancelAnimationFrame(frame);
 			offEvents();
+			canvas.removeEventListener("click", onClick);
+			canvas.removeEventListener("pointermove", onPointerMove);
 			observer.disconnect();
 			overlay.replaceChildren();
 			monitors.dispose();
@@ -202,7 +242,7 @@ export function SceneView({ store, reducedMotion }: Props) {
 				ref={canvasRef}
 				className="scene-canvas"
 				role="img"
-				aria-label="Pixel office where the crew reacts to trades"
+				aria-label="Pixel office where the crew reacts to trades. Click GLOOP's monitor for analytics."
 			/>
 			<div ref={overlayRef} className="scene-overlay" aria-hidden="true" />
 			{failure ? <div className="scene-fallback">3D view unavailable: {failure}. The HUD keeps working.</div> : null}
