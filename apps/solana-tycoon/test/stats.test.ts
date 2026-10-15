@@ -64,9 +64,9 @@ describe("computeStats", () => {
 		});
 	});
 
-	it("buckets pnl by local close hour using Date#getTimezoneOffset's sign", () => {
+	it("buckets pnl by local close hour with the offset as local minus UTC", () => {
 		const at = Date.UTC(2026, 9, 15, 3, 30);
-		const stats = computeStats([closed(sol(0.05), at)], 300);
+		const stats = computeStats([closed(sol(0.05), at)], -300);
 		expect(stats.pnlByHour[22]).toBeCloseTo(0.05, 10);
 		expect(stats.pnlByHour[3]).toBe(0);
 	});

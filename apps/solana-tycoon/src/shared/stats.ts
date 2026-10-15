@@ -81,8 +81,8 @@ export function computeStats(closes: readonly ClosedTrade[], tzOffsetMin: number
 	let running = 0;
 	sorted.forEach((trade, i) => {
 		exitReasons[trade.reason] += 1;
-		// tzOffsetMin follows Date#getTimezoneOffset: minutes to add to local time to reach UTC.
-		const localHour = new Date(trade.closedAt - tzOffsetMin * 60_000).getUTCHours();
+		// tzOffsetMin is local time minus UTC in minutes (-300 for UTC-5), i.e. -Date#getTimezoneOffset().
+		const localHour = new Date(trade.closedAt + tzOffsetMin * 60_000).getUTCHours();
 		pnlByHour[localHour] += pnls[i];
 		running += pnls[i];
 		cumulative.push({ at: trade.closedAt, sol: running });
