@@ -201,12 +201,19 @@ async function main(): Promise<void> {
 		onRaw,
 	});
 	let kraken: KrakenDesk | null = null;
-	if (env.kraken && !replaying) kraken = liveKrakenDesk(mode, dataDir, clock, bus, recorder);
-	// A recording made before the Kraken desk existed replays pump.fun only.
-	if (env.kraken && replaying && krakenLines.some((line) => line.kind.startsWith("kraken_"))) {
-		kraken = replayKrakenDesk(mode, dataDir, clock, bus, krakenLines);
+	let krakenFailure: string | undefined;
+	// A Kraken desk that cannot be built (for example, a corrupt settings file) shows OFFLINE; pump.fun runs anyway.
+	try {
+		if (env.kraken && !replaying) kraken = liveKrakenDesk(mode, dataDir, clock, bus, recorder);
+		// A recording made before the Kraken desk existed replays pump.fun only.
+		if (env.kraken && replaying && krakenLines.some((line) => line.kind.startsWith("kraken_"))) {
+			kraken = replayKrakenDesk(mode, dataDir, clock, bus, krakenLines);
+		}
+	} catch (error) {
+		krakenFailure = error instanceof Error ? error.message : String(error);
+		console.error(`Kraken desk offline: ${krakenFailure}`);
 	}
-	const engine = new Engine(core, kraken, { bus, clock });
+	const engine = new Engine(core, kraken, { bus, clock, krakenFailure });
 
 	const bridge = new BridgeServer({
 		port: cli.port ?? env.port,

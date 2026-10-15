@@ -35,11 +35,14 @@ export class FakeKrakenFeed implements KrakenFeedLike {
 export class FakeKrakenRest implements KrakenRestLike {
 	pairs: Record<string, unknown> = {};
 	assetPairsError: Error | null = null;
+	// While set, the pair list does not answer (a hung connection).
+	assetPairsHang: Promise<void> | null = null;
 	candles = new Map<string, unknown[][]>();
 	ohlcError: Error | null = null;
 	ohlcCalls: string[] = [];
 
 	async assetPairs(): Promise<unknown> {
+		if (this.assetPairsHang) await this.assetPairsHang;
 		if (this.assetPairsError) throw this.assetPairsError;
 		return structuredClone(this.pairs);
 	}

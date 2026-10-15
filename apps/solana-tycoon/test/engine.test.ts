@@ -47,6 +47,7 @@ describe("Engine", () => {
 		const h = withKraken();
 		h.kraken.rest.assetPairsError = new Error("fetch failed");
 		await h.engine.start();
+		await h.engine.krakenSettled();
 
 		const snapshot = h.engine.snapshot();
 		expect(snapshot.feed.status).toBe("live");
@@ -75,9 +76,61 @@ describe("Engine", () => {
 		expect(h.engine.snapshot().positions.map((position) => position.mint)).toEqual([coin]);
 	});
 
+	it("serves pump.fun while the Kraken start is still waiting on the network", async () => {
+		const h = withKraken();
+		h.kraken.rest.assetPairsHang = new Promise<void>(() => undefined);
+		await h.engine.start();
+		const snapshot = h.engine.snapshot();
+		expect(snapshot.feed.status).toBe("live");
+		expect(snapshot.kraken).toMatchObject({ error: null, feed: { status: "connecting" } });
+		const coin = mint();
+		healthyCoin(h.pump, coin);
+		expect((await h.engine.handleCommand({ type: "snipe", id: "s", mint: coin })).ok).toBe(true);
+		await h.clock.advance(800);
+	});
+
+	it("retries a failed Kraken start in the background and brings the desk online", async () => {
+		const h = withKraken();
+		h.kraken.rest.assetPairsError = new Error("fetch failed");
+		await h.engine.start();
+		await h.engine.krakenSettled();
+		expect(h.engine.snapshot().kraken?.error).toBe("fetch failed");
+		h.kraken.rest.assetPairsError = null;
+		await h.clock.advance(30_000);
+		await h.engine.krakenSettled();
+		expect(h.engine.snapshot().kraken?.error).toBeNull();
+		expect(h.events.filter((event) => event.type === "snapshot")).toHaveLength(1);
+		expect(h.events).toContainEqual({
+			type: "log",
+			line: { level: "info", message: "Kraken: desk online", at: NOW + 30_000 },
+		});
+		expect((await h.engine.handleCommand({ type: "kraken_pin", id: "p", pair: "MOONUSD" })).ok).toBe(true);
+	});
+
+	it("keeps pump.fun running when the Kraken desk could not be built, and shows why", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "engine-"));
+		dirs.push(dir);
+		const clock = new ManualClock(NOW);
+		const bus = new EngineBus();
+		const pump = buildPumpCore({ dir, clock, bus });
+		const failure = "Settings file data/settings-kraken-paper.json is not valid JSON";
+		const engine = new Engine(pump.core, null, { bus, clock, krakenFailure: failure });
+		engines.push(engine);
+		await engine.start();
+		expect(engine.snapshot().feed.status).toBe("live");
+		expect(engine.snapshot().kraken).toMatchObject({ error: failure, movers: [], positions: [] });
+		expect(await engine.handleCommand({ type: "kraken_buy", id: "b", pair: "MOONUSD" })).toEqual({
+			type: "ack",
+			id: "b",
+			ok: false,
+			error: "Kraken desk is offline",
+		});
+	});
+
 	it("kill sells every position on both desks, including buys still in flight, and pauses both until resume", async () => {
 		const h = withKraken();
 		await h.engine.start();
+		await h.engine.krakenSettled();
 		const held = mint();
 		const late = mint();
 		healthyCoin(h.pump, held);
@@ -121,6 +174,7 @@ describe("Engine", () => {
 	it("keeps pause and resume on their own desk outside a kill", async () => {
 		const h = withKraken();
 		await h.engine.start();
+		await h.engine.krakenSettled();
 		await h.engine.handleCommand({ type: "kraken_pause", id: "kp" });
 		await h.engine.handleCommand({ type: "pause", id: "pp" });
 		await h.engine.handleCommand({ type: "resume", id: "pr" });

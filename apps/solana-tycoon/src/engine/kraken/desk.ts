@@ -162,7 +162,11 @@ export class KrakenDesk {
 		});
 	}
 
+	// Safe to call again after a failed start: Engine retries it until Kraken answers.
 	async start(): Promise<void> {
+		for (const stop of this.stops.splice(0)) stop();
+		this.positions.clear();
+		this.positionByPair.clear();
 		const state = this.deps.ledger.load();
 		for (const warning of state.warnings) this.log("warn", `Kraken: ${warning}`);
 		this.closes = [...state.closed].sort((a, b) => a.closedAt - b.closedAt);
