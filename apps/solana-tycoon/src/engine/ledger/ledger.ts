@@ -1,18 +1,7 @@
-import {
-	appendFileSync,
-	closeSync,
-	existsSync,
-	mkdirSync,
-	openSync,
-	readFileSync,
-	readSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
-import { dirname } from "node:path";
 import { z } from "zod";
 import { ExitReasonSchema, FillSchema, LamportsSchema, ModeSchema } from "../../shared/protocol";
 import type { ClosedTrade, ExitReason, Fill, Mode } from "../../shared/types";
+import { JsonlLog } from "./jsonl";
 
 export type LedgerRecord =
 	| ({ kind: "fill" } & Fill)
@@ -116,65 +105,26 @@ export function rebuild(records: readonly LedgerRecord[]): Omit<LedgerState, "wa
 }
 
 export class Ledger {
-	private checkedTail = false;
+	private readonly log: JsonlLog<LedgerRecord>;
 
-	constructor(private readonly filePath: string) {}
+	constructor(filePath: string) {
+		this.log = new JsonlLog(filePath, LedgerRecordSchema);
+	}
 
 	load(): LedgerState {
-		if (!existsSync(this.filePath)) return { open: [], closed: [], warnings: [] };
-		const records: LedgerRecord[] = [];
-		const warnings: string[] = [];
-		const lines = readFileSync(this.filePath, "utf8").split("\n");
-		lines.forEach((line, index) => {
-			if (line.trim() === "") return;
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(line);
-			} catch {
-				warnings.push(`Skipped malformed ledger line ${index + 1}`);
-				return;
-			}
-			const result = LedgerRecordSchema.safeParse(parsed);
-			if (result.success) records.push(result.data);
-			else warnings.push(`Skipped malformed ledger line ${index + 1}`);
-		});
+		const { records, warnings } = this.log.load();
 		return { ...rebuild(records), warnings };
 	}
 
 	appendFill(fill: Fill): void {
-		this.appendRecord({ kind: "fill", ...fill });
+		this.log.append({ kind: "fill", ...fill });
 	}
 
 	appendClose(record: Omit<CloseRecord, "kind">): void {
-		this.appendRecord({ kind: "close", ...record });
+		this.log.append({ kind: "close", ...record });
 	}
 
 	reset(): void {
-		mkdirSync(dirname(this.filePath), { recursive: true });
-		writeFileSync(this.filePath, "");
-		this.checkedTail = true;
-	}
-
-	private appendRecord(record: LedgerRecord): void {
-		mkdirSync(dirname(this.filePath), { recursive: true });
-		// A crash mid-write can leave a partial last line; start on a fresh line so the
-		// new record is not glued onto it and lost with it.
-		const prefix = !this.checkedTail && this.endsMidLine() ? "\n" : "";
-		this.checkedTail = true;
-		appendFileSync(this.filePath, `${prefix}${JSON.stringify(record)}\n`);
-	}
-
-	private endsMidLine(): boolean {
-		if (!existsSync(this.filePath)) return false;
-		const size = statSync(this.filePath).size;
-		if (size === 0) return false;
-		const fd = openSync(this.filePath, "r");
-		try {
-			const last = Buffer.alloc(1);
-			readSync(fd, last, 0, 1, size - 1);
-			return last.toString("utf8") !== "\n";
-		} finally {
-			closeSync(fd);
-		}
+		this.log.reset();
 	}
 }
