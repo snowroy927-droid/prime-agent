@@ -82,23 +82,27 @@ function deepMerge(base: unknown, patch: unknown): unknown {
 	return merged;
 }
 
-export function applySettingsPatch(
-	current: Settings,
-	patch: unknown,
-): { ok: true; settings: Settings } | { ok: false; error: string } {
+export type PatchResult<T> = { ok: true; settings: T } | { ok: false; error: string };
+
+// Deep-merges a partial patch onto current settings and validates the result against a schema.
+export function parsePatched<T>(schema: z.ZodType<T>, current: T, patch: unknown): PatchResult<T> {
 	if (!isPlainObject(patch)) return { ok: false, error: "settings patch must be an object" };
-	const parsed = SettingsSchema.safeParse(deepMerge(current, patch));
-	if (!parsed.success) {
-		const error = parsed.error.issues
-			.map((issue) => {
-				const keys = "keys" in issue ? issue.keys.join(", ") : "";
-				const path = [...issue.path.map(String), keys].filter(Boolean).join(".");
-				return `${path || "settings"}: ${issue.message}`;
-			})
-			.join("; ");
-		return { ok: false, error };
-	}
-	const settings = parsed.data;
+	const parsed = schema.safeParse(deepMerge(current, patch));
+	if (parsed.success) return { ok: true, settings: parsed.data };
+	const error = parsed.error.issues
+		.map((issue) => {
+			const keys = "keys" in issue ? issue.keys.join(", ") : "";
+			const path = [...issue.path.map(String), keys].filter(Boolean).join(".");
+			return `${path || "settings"}: ${issue.message}`;
+		})
+		.join("; ");
+	return { ok: false, error };
+}
+
+export function applySettingsPatch(current: Settings, patch: unknown): PatchResult<Settings> {
+	const result = parsePatched(SettingsSchema, current, patch);
+	if (!result.ok) return result;
+	const settings = result.settings;
 	settings.buySol = Math.min(settings.buySol, HARD_LIMITS.buySolMax);
 	settings.maxPositions = Math.min(settings.maxPositions, HARD_LIMITS.maxPositionsMax);
 	return { ok: true, settings };
