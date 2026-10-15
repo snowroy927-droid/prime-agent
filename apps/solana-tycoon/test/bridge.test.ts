@@ -148,7 +148,7 @@ describe("BridgeServer WebSocket", () => {
 	it("greets a client with hello then a snapshot", async () => {
 		const { messages } = await connect(`?token=${token}`);
 		await waitFor(() => messages.length >= 2);
-		expect(messages[0]).toEqual({ type: "hello", protocolVersion: 1, mode: "paper", synthetic: false });
+		expect(messages[0]).toEqual({ type: "hello", protocolVersion: 2, mode: "paper", synthetic: false });
 		expect(messages[1]).toEqual({ type: "snapshot", snapshot: fakeSnapshot });
 	});
 

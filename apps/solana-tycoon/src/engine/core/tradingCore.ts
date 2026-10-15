@@ -1,3 +1,4 @@
+import { type Outcome, pumpOutcome } from "../../shared/outcome";
 import type { Ack, Command, EngineEvent, EngineSnapshot } from "../../shared/protocol";
 import { HARD_LIMITS } from "../../shared/settings";
 import { computeLaunchStats, computeStats } from "../../shared/stats";
@@ -11,6 +12,7 @@ import type {
 	Mode,
 	OrderUpdate,
 	Side,
+	Verdict,
 } from "../../shared/types";
 import { BASE_FEE_LAMPORTS, haircut, solToLamports } from "../../shared/units";
 import type { EngineBus } from "../bus";
@@ -21,7 +23,7 @@ import type { Clock } from "../clock";
 import { isValidMint } from "../feed/parse";
 import type { FeedEvent, LaunchFeed } from "../feed/types";
 import type { Ledger } from "../ledger/ledger";
-import type { RiskGuard } from "../risk/guard";
+import type { RiskGuard, Signal } from "../risk/guard";
 import type { LaunchHistory } from "../scout/launchHistory";
 import { HARD_RULES } from "../scout/rugcheck";
 import type { Scout } from "../scout/scout";
@@ -71,6 +73,10 @@ function isMigrated(snapshot: CurveSnapshot): boolean {
 	return snapshot.curve.complete || pump.isBondingCurveMigrated(snapshot.curve);
 }
 
+function signalFor(verdict: Verdict | null): Signal {
+	return verdict === "approved" || verdict === "rejected" ? verdict : null;
+}
+
 export class TradingCore {
 	private readonly positions = new Map<string, PositionState>();
 	private readonly positionByMint = new Map<string, string>();
@@ -116,7 +122,7 @@ export class TradingCore {
 			this.positionByMint.set(position.mint, position.id);
 		}
 		for (const position of [...this.positions.values()]) await this.resumePosition(position);
-		this.lastRiskJson = JSON.stringify(this.deps.risk.state(this.closes));
+		this.lastRiskJson = JSON.stringify(this.deps.risk.state(this.outcomes()));
 		this.offFeed = this.deps.feed.on((event) => this.onFeed(event));
 		this.deps.feed.start();
 		this.stopTicker = this.deps.clock.every(1_000, () => this.tick());
@@ -145,7 +151,7 @@ export class TradingCore {
 			closes: this.closes.slice(-CLOSES_IN_SNAPSHOT),
 			stats: computeStats(this.closes, this.deps.tzOffsetMin()),
 			launchStats: computeLaunchStats(this.recentLaunches, [...this.latestChecks.values()], now),
-			risk: this.deps.risk.state(this.closes),
+			risk: this.deps.risk.state(this.outcomes()),
 			settings,
 			pinned: [...this.pinned],
 			balanceLamports: this.balanceLamports().toString(),
@@ -163,9 +169,9 @@ export class TradingCore {
 		switch (command.type) {
 			case "snipe": {
 				if (!isValidMint(command.mint)) return ack(fail("Invalid mint"));
-				const decision = this.deps.risk.canOpen("manual", this.closes, this.openCount(), {
+				const decision = this.deps.risk.canOpen("manual", this.outcomes(), this.openCount(), {
 					holdConfirmed: command.holdConfirmed ?? false,
-					checkVerdict: this.latestChecks.get(command.mint)?.verdict ?? null,
+					signal: signalFor(this.latestChecks.get(command.mint)?.verdict ?? null),
 				});
 				if (!decision.ok) return ack(fail(decision.reason));
 				return ack(this.placeBuy(command.mint, this.symbolFor(command.mint), "manual"));
@@ -297,9 +303,9 @@ export class TradingCore {
 			this.recordCheck(check);
 		}
 		if (check.verdict !== "approved") return;
-		const decision = this.deps.risk.canOpen("auto", this.closes, this.openCount(), {
+		const decision = this.deps.risk.canOpen("auto", this.outcomes(), this.openCount(), {
 			holdConfirmed: false,
-			checkVerdict: check.verdict,
+			signal: signalFor(check.verdict),
 		});
 		if (!decision.ok) {
 			this.log("info", `Skipped ${launch.symbol}: ${decision.reason}`);
@@ -583,6 +589,10 @@ export class TradingCore {
 		if (this.positions.has(position.id)) this.positions.set(position.id, position);
 	}
 
+	private outcomes(): Outcome[] {
+		return this.closes.map(pumpOutcome);
+	}
+
 	private openCount(): number {
 		return this.positions.size + this.pendingBuys.size;
 	}
@@ -646,7 +656,7 @@ export class TradingCore {
 	}
 
 	private emitRisk(force: boolean): void {
-		const risk = this.deps.risk.state(this.closes);
+		const risk = this.deps.risk.state(this.outcomes());
 		const json = JSON.stringify(risk);
 		if (!force && json === this.lastRiskJson) return;
 		this.lastRiskJson = json;

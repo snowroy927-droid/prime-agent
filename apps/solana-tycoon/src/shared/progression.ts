@@ -1,4 +1,5 @@
 import { byClosedAt } from "./combo";
+import { type Outcome, pumpOutcome } from "./outcome";
 import type { ClosedTrade } from "./types";
 import { solToLamports } from "./units";
 
@@ -13,14 +14,18 @@ export const UPGRADES = [
 
 export type UpgradeId = (typeof UPGRADES)[number]["id"];
 
-export function peakCumulativeLamports(closes: readonly ClosedTrade[]): bigint {
+export function peakCumulative(outcomes: readonly Outcome[]): bigint {
 	let total = 0n;
 	let peak = 0n;
-	for (const trade of byClosedAt(closes)) {
-		total += BigInt(trade.pnlLamports);
+	for (const outcome of byClosedAt(outcomes)) {
+		total += outcome.pnl;
 		if (total > peak) peak = total;
 	}
 	return peak;
+}
+
+export function peakCumulativeLamports(closes: readonly ClosedTrade[]): bigint {
+	return peakCumulative(closes.map(pumpOutcome));
 }
 
 export function unlockedUpgrades(closes: readonly ClosedTrade[]): UpgradeId[] {

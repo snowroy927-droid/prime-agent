@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ManualClock } from "../src/engine/clock";
-import { dailyPnlLamports, defaultTzOffsetMin, nextLocalMidnight, RiskGuard } from "../src/engine/risk/guard";
+import {
+	dailyPnl,
+	defaultTzOffsetMin,
+	nextLocalMidnight,
+	PUMP_RISK_COPY,
+	pumpLimits,
+	RiskGuard,
+} from "../src/engine/risk/guard";
+import { type Outcome, pumpOutcome } from "../src/shared/outcome";
 import { DEFAULT_SETTINGS, type Settings } from "../src/shared/settings";
-import type { ClosedTrade } from "../src/shared/types";
-import { closed } from "./helpers/trades";
+import { closed as closedTrade } from "./helpers/trades";
 
 const CDT = -300;
 const MIN = 60_000;
@@ -15,12 +22,18 @@ let clock: ManualClock;
 let settings: Settings;
 let guard: RiskGuard;
 
-const approved = { holdConfirmed: false, checkVerdict: "approved" as const };
+const approved = { holdConfirmed: false, signal: "approved" as const };
+const closed = (pnl: bigint, at: number): Outcome => pumpOutcome(closedTrade(pnl, at));
 
 beforeEach(() => {
 	clock = new ManualClock(NOW);
 	settings = structuredClone(DEFAULT_SETTINGS);
-	guard = new RiskGuard({ clock, settings: () => settings, tzOffsetMin: () => CDT });
+	guard = new RiskGuard({
+		clock,
+		limits: () => pumpLimits(settings),
+		copy: PUMP_RISK_COPY,
+		tzOffsetMin: () => CDT,
+	});
 });
 
 describe("local day helpers", () => {
@@ -31,7 +44,7 @@ describe("local day helpers", () => {
 			closed(-30_000_000n, NOW - 60 * MIN),
 			closed(10_000_000n, NOW - 5 * MIN),
 		];
-		expect(dailyPnlLamports(closes, NOW, CDT)).toBe(-20_000_000n);
+		expect(dailyPnl(closes, NOW, CDT)).toBe(-20_000_000n);
 	});
 
 	it("defaults the offset to local minus UTC", () => {
@@ -83,31 +96,31 @@ describe("RiskGuard.canOpen", () => {
 	});
 
 	it("requires an approved verdict for auto snipes", () => {
-		expect(guard.canOpen("auto", [], 0, { holdConfirmed: false, checkVerdict: "rejected" })).toEqual({
+		expect(guard.canOpen("auto", [], 0, { holdConfirmed: false, signal: "rejected" })).toEqual({
 			ok: false,
 			reason: "Not approved",
 		});
-		expect(guard.canOpen("auto", [], 0, { holdConfirmed: false, checkVerdict: null })).toEqual({
+		expect(guard.canOpen("auto", [], 0, { holdConfirmed: false, signal: null })).toEqual({
 			ok: false,
 			reason: "Not approved",
 		});
 	});
 
 	it("needs a hold for manual snipes during tilt or on rejected coins", () => {
-		const tilted: ClosedTrade[] = [closed(-1n, NOW - 3 * MIN), closed(-1n, NOW - 2 * MIN), closed(-1n, NOW - MIN)];
-		expect(guard.canOpen("manual", tilted, 0, { holdConfirmed: false, checkVerdict: "approved" })).toEqual({
+		const tilted: Outcome[] = [closed(-1n, NOW - 3 * MIN), closed(-1n, NOW - 2 * MIN), closed(-1n, NOW - MIN)];
+		expect(guard.canOpen("manual", tilted, 0, { holdConfirmed: false, signal: "approved" })).toEqual({
 			ok: false,
 			reason: "Hold to confirm during tilt",
 		});
-		expect(guard.canOpen("manual", tilted, 0, { holdConfirmed: true, checkVerdict: "approved" })).toEqual({
+		expect(guard.canOpen("manual", tilted, 0, { holdConfirmed: true, signal: "approved" })).toEqual({
 			ok: true,
 		});
-		expect(guard.canOpen("manual", [], 0, { holdConfirmed: false, checkVerdict: "rejected" })).toEqual({
+		expect(guard.canOpen("manual", [], 0, { holdConfirmed: false, signal: "rejected" })).toEqual({
 			ok: false,
 			reason: "Hold to snipe a rejected coin",
 		});
-		expect(guard.canOpen("manual", [], 0, { holdConfirmed: true, checkVerdict: "rejected" })).toEqual({ ok: true });
-		expect(guard.canOpen("manual", [], 0, { holdConfirmed: false, checkVerdict: null })).toEqual({ ok: true });
+		expect(guard.canOpen("manual", [], 0, { holdConfirmed: true, signal: "rejected" })).toEqual({ ok: true });
+		expect(guard.canOpen("manual", [], 0, { holdConfirmed: false, signal: null })).toEqual({ ok: true });
 	});
 });
 
@@ -116,12 +129,12 @@ describe("RiskGuard.state", () => {
 		guard.setPaused(true, "Kill switch");
 		const closes = [closed(-30_000_000n, NOW - MIN), closed(-5_000_000n, NOW - 30_000)];
 		expect(guard.state(closes)).toEqual({
-			autoSnipe: true,
+			auto: true,
 			paused: true,
 			pausedReason: "Kill switch",
 			tiltLosses: 2,
 			tiltUntil: null,
-			dailyPnlLamports: "-35000000",
+			dailyPnl: "-35000000",
 			dailyCapUntil: null,
 		});
 	});

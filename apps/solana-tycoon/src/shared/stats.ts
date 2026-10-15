@@ -1,25 +1,27 @@
 import { byClosedAt } from "./combo";
+import { type Outcome, pumpOutcome } from "./outcome";
 import type { CheckResult, ClosedTrade, ExitReason, Launch, RuleId } from "./types";
-import { lamportsToSol } from "./units";
+import { LAMPORTS_PER_SOL } from "./units";
 
 export type ExperimentVerdict = { kind: "collecting"; needed: number } | { kind: "losing" } | { kind: "not_losing" };
 
+// Amounts are in whole units of the desk's currency: SOL for pump.fun, USD for Kraken.
 export interface Stats {
 	trades: number;
 	wins: number;
 	losses: number;
 	winRate: number;
-	avgWinSol: number;
-	avgLossSol: number;
+	avgWin: number;
+	avgLoss: number;
 	profitFactor: number | null;
-	expectancySol: number;
+	expectancy: number;
 	expectancyCi90: [number, number] | null;
-	bestSol: number | null;
-	worstSol: number | null;
-	realizedSol: number;
-	cumulative: { at: number; sol: number }[];
+	best: number | null;
+	worst: number | null;
+	realized: number;
+	cumulative: { at: number; value: number }[];
 	pnlByHour: number[];
-	holds: { holdSec: number; pnlSol: number }[];
+	holds: { holdSec: number; pnl: number }[];
 	exitReasons: Record<ExitReason, number>;
 	verdict: ExperimentVerdict;
 }
@@ -60,9 +62,9 @@ function verdictFor(n: number, ci: [number, number] | null): ExperimentVerdict {
 	return ci[1] < 0 ? { kind: "losing" } : { kind: "not_losing" };
 }
 
-export function computeStats(closes: readonly ClosedTrade[], tzOffsetMin: number): Stats {
-	const sorted = byClosedAt(closes);
-	const pnls = sorted.map((trade) => lamportsToSol(trade.pnlLamports));
+export function computeStatsOf(outcomes: readonly Outcome[], tzOffsetMin: number, unitsPerWhole: number): Stats {
+	const sorted = byClosedAt(outcomes);
+	const pnls = sorted.map((outcome) => Number(outcome.pnl) / unitsPerWhole);
 	const winPnls = pnls.filter((p) => p > 0);
 	const lossPnls = pnls.filter((p) => p < 0);
 	const grossWin = sum(winPnls);
@@ -77,15 +79,15 @@ export function computeStats(closes: readonly ClosedTrade[], tzOffsetMin: number
 		max_hold: 0,
 	};
 	const pnlByHour = Array.from({ length: 24 }, () => 0);
-	const cumulative: { at: number; sol: number }[] = [];
+	const cumulative: { at: number; value: number }[] = [];
 	let running = 0;
-	sorted.forEach((trade, i) => {
-		exitReasons[trade.reason] += 1;
+	sorted.forEach((outcome, i) => {
+		exitReasons[outcome.reason] += 1;
 		// tzOffsetMin is local time minus UTC in minutes (-300 for UTC-5), i.e. -Date#getTimezoneOffset().
-		const localHour = new Date(trade.closedAt + tzOffsetMin * 60_000).getUTCHours();
+		const localHour = new Date(outcome.closedAt + tzOffsetMin * 60_000).getUTCHours();
 		pnlByHour[localHour] += pnls[i];
 		running += pnls[i];
-		cumulative.push({ at: trade.closedAt, sol: running });
+		cumulative.push({ at: outcome.closedAt, value: running });
 	});
 
 	const ci = ci90(pnls);
@@ -94,20 +96,24 @@ export function computeStats(closes: readonly ClosedTrade[], tzOffsetMin: number
 		wins: winPnls.length,
 		losses: lossPnls.length,
 		winRate: sorted.length === 0 ? 0 : winPnls.length / sorted.length,
-		avgWinSol: mean(winPnls),
-		avgLossSol: mean(lossPnls),
+		avgWin: mean(winPnls),
+		avgLoss: mean(lossPnls),
 		profitFactor: grossLoss === 0 ? null : grossWin / grossLoss,
-		expectancySol: mean(pnls),
+		expectancy: mean(pnls),
 		expectancyCi90: ci,
-		bestSol: pnls.length === 0 ? null : Math.max(...pnls),
-		worstSol: pnls.length === 0 ? null : Math.min(...pnls),
-		realizedSol: sum(pnls),
+		best: pnls.length === 0 ? null : Math.max(...pnls),
+		worst: pnls.length === 0 ? null : Math.min(...pnls),
+		realized: sum(pnls),
 		cumulative,
 		pnlByHour,
-		holds: sorted.map((trade, i) => ({ holdSec: (trade.closedAt - trade.openedAt) / 1000, pnlSol: pnls[i] })),
+		holds: sorted.map((outcome, i) => ({ holdSec: (outcome.closedAt - outcome.openedAt) / 1000, pnl: pnls[i] })),
 		exitReasons,
 		verdict: verdictFor(sorted.length, ci),
 	};
+}
+
+export function computeStats(closes: readonly ClosedTrade[], tzOffsetMin: number): Stats {
+	return computeStatsOf(closes.map(pumpOutcome), tzOffsetMin, Number(LAMPORTS_PER_SOL));
 }
 
 function latestFinalChecks(checks: readonly CheckResult[]): CheckResult[] {

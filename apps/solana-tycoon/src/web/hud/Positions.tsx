@@ -97,11 +97,11 @@ export function Positions({ state, actions }: Props) {
 				</div>
 				<div className="stat">
 					<div className="k">EXPECTANCY</div>
-					<div className="v">{stats && stats.trades > 0 ? stats.expectancySol.toFixed(4) : "--"}</div>
+					<div className="v">{stats && stats.trades > 0 ? stats.expectancy.toFixed(4) : "--"}</div>
 				</div>
 				<div className="stat">
 					<div className="k">REALIZED</div>
-					<div className="v">{stats ? stats.realizedSol.toFixed(4) : "--"}</div>
+					<div className="v">{stats ? stats.realized.toFixed(4) : "--"}</div>
 				</div>
 				<div className="stat">
 					<div className="k">PROFIT FACTOR</div>

@@ -72,7 +72,7 @@ describe("engine smoke", () => {
 			});
 			ws.on("error", reject);
 		});
-		expect(hello).toEqual({ type: "hello", protocolVersion: 1, mode: "demo", synthetic: true });
+		expect(hello).toEqual({ type: "hello", protocolVersion: 2, mode: "demo", synthetic: true });
 
 		const exited = new Promise<number | null>((resolve) => child?.on("exit", (code) => resolve(code)));
 		child.kill("SIGINT");

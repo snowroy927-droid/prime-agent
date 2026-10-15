@@ -161,7 +161,7 @@ export class MonitorTextures {
 			67,
 			state.tier === "cold" ? BASE_PALETTE[4] : accent,
 		);
-		const realized = snapshot?.stats.realizedSol ?? 0;
+		const realized = snapshot?.stats.realized ?? 0;
 		text(wall.ctx, `${realized >= 0 ? "+" : ""}${realized.toFixed(3)}`, 98, 67, realized >= 0 ? GOOD : BAD);
 
 		for (const s of Object.values(this.surfaces)) s.texture.needsUpdate = true;

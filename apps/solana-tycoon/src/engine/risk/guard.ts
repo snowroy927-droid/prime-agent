@@ -1,10 +1,43 @@
+import type { Outcome } from "../../shared/outcome";
 import type { Settings } from "../../shared/settings";
-import { consecutiveLosses, tiltUntil } from "../../shared/tilt";
-import type { ClosedTrade, RiskState, Verdict } from "../../shared/types";
+import { consecutiveLossesOf, tiltUntilOf } from "../../shared/tilt";
+import type { RiskState } from "../../shared/types";
 import { solToLamports } from "../../shared/units";
 import type { Clock } from "../clock";
 
 export type OpenKind = "auto" | "manual";
+export type Signal = "approved" | "rejected" | null;
+
+// `dailyLossCap` is in the desk's minor units, like Outcome.pnl.
+export interface RiskLimits {
+	maxPositions: number;
+	auto: boolean;
+	dailyLossCap: bigint;
+	tiltLosses: number;
+	tiltCooldownMin: number;
+}
+
+export interface RiskCopy {
+	autoOff: string;
+	notApproved: string;
+	rejectedHold: string;
+}
+
+export const PUMP_RISK_COPY: RiskCopy = {
+	autoOff: "Auto-snipe off",
+	notApproved: "Not approved",
+	rejectedHold: "Hold to snipe a rejected coin",
+};
+
+export function pumpLimits(s: Settings): RiskLimits {
+	return {
+		maxPositions: s.maxPositions,
+		auto: s.autoSnipe,
+		dailyLossCap: solToLamports(s.dailyLossCapSol),
+		tiltLosses: s.tiltLosses,
+		tiltCooldownMin: s.tiltCooldownMin,
+	};
+}
 
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
@@ -23,11 +56,11 @@ export function nextLocalMidnight(now: number, tzOffsetMin: number): number {
 	return localDayStart(now, tzOffsetMin) + DAY_MS;
 }
 
-export function dailyPnlLamports(closes: readonly ClosedTrade[], now: number, tzOffsetMin: number): bigint {
+export function dailyPnl(outcomes: readonly Outcome[], now: number, tzOffsetMin: number): bigint {
 	const start = localDayStart(now, tzOffsetMin);
-	return closes
-		.filter((trade) => trade.closedAt >= start && trade.closedAt <= now)
-		.reduce((total, trade) => total + BigInt(trade.pnlLamports), 0n);
+	return outcomes
+		.filter((outcome) => outcome.closedAt >= start && outcome.closedAt <= now)
+		.reduce((total, outcome) => total + outcome.pnl, 0n);
 }
 
 function localClock(at: number, tzOffsetMin: number): string {
@@ -38,7 +71,8 @@ function localClock(at: number, tzOffsetMin: number): string {
 
 export interface RiskGuardDeps {
 	clock: Clock;
-	settings: () => Settings;
+	limits: () => RiskLimits;
+	copy: RiskCopy;
 	tzOffsetMin?: () => number;
 }
 
@@ -56,57 +90,57 @@ export class RiskGuard {
 		this.pausedReason = paused ? reason : null;
 	}
 
-	state(closes: readonly ClosedTrade[]): RiskState {
-		const settings = this.deps.settings();
-		const daily = this.dailyPnl(closes);
+	state(outcomes: readonly Outcome[]): RiskState {
+		const limits = this.deps.limits();
+		const daily = this.dailyPnl(outcomes);
 		return {
-			autoSnipe: settings.autoSnipe,
+			auto: limits.auto,
 			paused: this.paused,
 			pausedReason: this.pausedReason,
-			tiltLosses: consecutiveLosses(closes),
-			tiltUntil: this.activeTilt(closes),
-			dailyPnlLamports: daily.toString(),
+			tiltLosses: consecutiveLossesOf(outcomes),
+			tiltUntil: this.activeTilt(outcomes),
+			dailyPnl: daily.toString(),
 			dailyCapUntil: this.capHit(daily) ? nextLocalMidnight(this.deps.clock.now(), this.tzOffsetMin()) : null,
 		};
 	}
 
 	canOpen(
 		kind: OpenKind,
-		closes: readonly ClosedTrade[],
+		outcomes: readonly Outcome[],
 		openCount: number,
-		opts: { holdConfirmed: boolean; checkVerdict: Verdict | null },
+		opts: { holdConfirmed: boolean; signal: Signal },
 	): { ok: true } | { ok: false; reason: string } {
-		const settings = this.deps.settings();
+		const limits = this.deps.limits();
+		const copy = this.deps.copy;
 		if (this.paused) return { ok: false, reason: "Engine paused" };
-		if (openCount >= settings.maxPositions)
-			return { ok: false, reason: `Max positions (${settings.maxPositions}) reached` };
-		const tilt = this.activeTilt(closes);
+		if (openCount >= limits.maxPositions)
+			return { ok: false, reason: `Max positions (${limits.maxPositions}) reached` };
+		const tilt = this.activeTilt(outcomes);
 
 		if (kind === "auto") {
-			if (!settings.autoSnipe) return { ok: false, reason: "Auto-snipe off" };
-			if (this.capHit(this.dailyPnl(closes))) return { ok: false, reason: "Daily loss cap hit" };
+			if (!limits.auto) return { ok: false, reason: copy.autoOff };
+			if (this.capHit(this.dailyPnl(outcomes))) return { ok: false, reason: "Daily loss cap hit" };
 			if (tilt !== null) return { ok: false, reason: `Tilt cooldown until ${localClock(tilt, this.tzOffsetMin())}` };
-			if (opts.checkVerdict !== "approved") return { ok: false, reason: "Not approved" };
+			if (opts.signal !== "approved") return { ok: false, reason: copy.notApproved };
 			return { ok: true };
 		}
 
 		if (tilt !== null && !opts.holdConfirmed) return { ok: false, reason: "Hold to confirm during tilt" };
-		if (opts.checkVerdict === "rejected" && !opts.holdConfirmed) {
-			return { ok: false, reason: "Hold to snipe a rejected coin" };
-		}
+		if (opts.signal === "rejected" && !opts.holdConfirmed) return { ok: false, reason: copy.rejectedHold };
 		return { ok: true };
 	}
 
-	private dailyPnl(closes: readonly ClosedTrade[]): bigint {
-		return dailyPnlLamports(closes, this.deps.clock.now(), this.tzOffsetMin());
+	private dailyPnl(outcomes: readonly Outcome[]): bigint {
+		return dailyPnl(outcomes, this.deps.clock.now(), this.tzOffsetMin());
 	}
 
 	private capHit(daily: bigint): boolean {
-		return daily <= -solToLamports(this.deps.settings().dailyLossCapSol);
+		return daily <= -this.deps.limits().dailyLossCap;
 	}
 
-	private activeTilt(closes: readonly ClosedTrade[]): number | null {
-		const until = tiltUntil(closes, this.deps.settings());
+	private activeTilt(outcomes: readonly Outcome[]): number | null {
+		const limits = this.deps.limits();
+		const until = tiltUntilOf(outcomes, limits.tiltLosses, limits.tiltCooldownMin);
 		return until !== null && until > this.deps.clock.now() ? until : null;
 	}
 }

@@ -9,7 +9,7 @@ import { TradingCore } from "../src/engine/core/tradingCore";
 import { Ledger } from "../src/engine/ledger/ledger";
 import { ReplayDriver } from "../src/engine/replay/player";
 import { buildDemoSession } from "../src/engine/replay/synthetic";
-import { RiskGuard } from "../src/engine/risk/guard";
+import { PUMP_RISK_COPY, pumpLimits, RiskGuard } from "../src/engine/risk/guard";
 import { LaunchHistory } from "../src/engine/scout/launchHistory";
 import { Scout } from "../src/engine/scout/scout";
 import { SettingsStore } from "../src/engine/settingsStore";
@@ -58,7 +58,12 @@ async function runDemo(speed = 1): Promise<{ events: EngineEvent[]; symbols: Map
 		ledger: new Ledger(join(dir, "ledger.jsonl")),
 		history,
 		scout: new Scout({ chain: driver.chain, budget, history, clock, settings: () => settings.get() }),
-		risk: new RiskGuard({ clock, settings: () => settings.get(), tzOffsetMin: () => 0 }),
+		risk: new RiskGuard({
+			clock,
+			limits: () => pumpLimits(settings.get()),
+			copy: PUMP_RISK_COPY,
+			tzOffsetMin: () => 0,
+		}),
 		budget,
 		clock,
 		bus,

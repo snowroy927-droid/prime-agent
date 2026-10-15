@@ -232,12 +232,12 @@ export function Analytics({ state, onClose }: Props) {
 				<div className="tiles">
 					<div className="tile hero">
 						<div className="k">REALIZED PNL</div>
-						<div className={`v pol ${polarity(stats.realizedSol)}`}>{sol(stats.realizedSol)} SOL</div>
+						<div className={`v pol ${polarity(stats.realized)}`}>{sol(stats.realized)} SOL</div>
 						<div className="s">{stats.trades} closed trades</div>
 					</div>
 					<div className="tile">
 						<div className="k">EXPECTANCY / TRADE</div>
-						<div className="v">{stats.trades ? sol(stats.expectancySol) : "--"}</div>
+						<div className="v">{stats.trades ? sol(stats.expectancy) : "--"}</div>
 						<div className="s">{ci ? `90% CI ${sol(ci[0])} to ${sol(ci[1])}` : "CI needs 2+ closes"}</div>
 					</div>
 					<div className="tile">
@@ -255,13 +255,13 @@ export function Analytics({ state, onClose }: Props) {
 								? stats.wins === 0
 									? "no trades yet"
 									: "no losing trades yet"
-								: `avg win ${stats.avgWinSol.toFixed(4)} / loss ${stats.avgLossSol.toFixed(4)}`}
+								: `avg win ${stats.avgWin.toFixed(4)} / loss ${stats.avgLoss.toFixed(4)}`}
 						</div>
 					</div>
 					<div className="tile">
 						<div className="k">BEST / WORST</div>
-						<div className="v">{stats.bestSol === null ? "--" : sol(stats.bestSol)}</div>
-						<div className="s">{stats.worstSol === null ? "no trades yet" : `worst ${sol(stats.worstSol)}`}</div>
+						<div className="v">{stats.best === null ? "--" : sol(stats.best)}</div>
+						<div className="s">{stats.worst === null ? "no trades yet" : `worst ${sol(stats.worst)}`}</div>
 					</div>
 					<div className="tile">
 						<div className="k">CHECK PASS RATE</div>
@@ -287,7 +287,7 @@ export function Analytics({ state, onClose }: Props) {
 									[
 										// Zero when the first closed trade opened.
 										{ x: (stats.cumulative[0]?.at ?? 0) - (stats.holds[0]?.holdSec ?? 0) * 1000, y: 0 },
-										...stats.cumulative.map((point) => ({ x: point.at, y: point.sol })),
+										...stats.cumulative.map((point) => ({ x: point.at, y: point.value })),
 									],
 									box,
 									colors,
@@ -371,7 +371,7 @@ export function Analytics({ state, onClose }: Props) {
 							draw={(ctx, box) =>
 								drawScatter(
 									ctx,
-									stats.holds.map((hold) => ({ x: hold.holdSec, y: hold.pnlSol })),
+									stats.holds.map((hold) => ({ x: hold.holdSec, y: hold.pnl })),
 									box,
 									colors,
 									{ x: seconds, y: (v) => v.toFixed(3) },

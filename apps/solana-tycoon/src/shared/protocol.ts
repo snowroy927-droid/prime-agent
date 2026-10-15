@@ -14,7 +14,7 @@ import type {
 	RuleResult,
 } from "./types";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const LamportsSchema = z.string().regex(/^-?\d+$/, "expected an integer string");
 
@@ -129,12 +129,12 @@ export const OrderUpdateSchema = z.object({
 }) satisfies z.ZodType<OrderUpdate>;
 
 export const RiskStateSchema = z.object({
-	autoSnipe: z.boolean(),
+	auto: z.boolean(),
 	paused: z.boolean(),
 	pausedReason: z.string().nullable(),
 	tiltLosses: z.number().int(),
 	tiltUntil: z.number().nullable(),
-	dailyPnlLamports: LamportsSchema,
+	dailyPnl: LamportsSchema,
 	dailyCapUntil: z.number().nullable(),
 }) satisfies z.ZodType<RiskState>;
 
@@ -149,17 +149,17 @@ export const StatsSchema = z.object({
 	wins: z.number().int(),
 	losses: z.number().int(),
 	winRate: z.number(),
-	avgWinSol: z.number(),
-	avgLossSol: z.number(),
+	avgWin: z.number(),
+	avgLoss: z.number(),
 	profitFactor: z.number().nullable(),
-	expectancySol: z.number(),
+	expectancy: z.number(),
 	expectancyCi90: z.tuple([z.number(), z.number()]).nullable(),
-	bestSol: z.number().nullable(),
-	worstSol: z.number().nullable(),
-	realizedSol: z.number(),
-	cumulative: z.array(z.object({ at: z.number(), sol: z.number() })),
+	best: z.number().nullable(),
+	worst: z.number().nullable(),
+	realized: z.number(),
+	cumulative: z.array(z.object({ at: z.number(), value: z.number() })),
 	pnlByHour: z.array(z.number()),
-	holds: z.array(z.object({ holdSec: z.number(), pnlSol: z.number() })),
+	holds: z.array(z.object({ holdSec: z.number(), pnl: z.number() })),
 	exitReasons: z.record(ExitReasonSchema, z.number().int()),
 	verdict: z.discriminatedUnion("kind", [
 		z.object({ kind: z.literal("collecting"), needed: z.number().int() }),

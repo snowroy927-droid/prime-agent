@@ -10,7 +10,7 @@ import { web3 } from "../src/engine/chain/solana";
 import { ManualClock } from "../src/engine/clock";
 import { TradingCore } from "../src/engine/core/tradingCore";
 import { Ledger } from "../src/engine/ledger/ledger";
-import { RiskGuard } from "../src/engine/risk/guard";
+import { PUMP_RISK_COPY, pumpLimits, RiskGuard } from "../src/engine/risk/guard";
 import { LaunchHistory } from "../src/engine/scout/launchHistory";
 import { Scout } from "../src/engine/scout/scout";
 import { SettingsStore } from "../src/engine/settingsStore";
@@ -75,7 +75,12 @@ async function harness(opts: { budgetPerSec?: number; prepare?: (h: Omit<Harness
 		ledger: new Ledger(ledgerPath),
 		history,
 		scout: new Scout({ chain, budget, history, clock, settings: () => settings.get() }),
-		risk: new RiskGuard({ clock, settings: () => settings.get(), tzOffsetMin: () => 0 }),
+		risk: new RiskGuard({
+			clock,
+			limits: () => pumpLimits(settings.get()),
+			copy: PUMP_RISK_COPY,
+			tzOffsetMin: () => 0,
+		}),
 		budget,
 		clock,
 		bus,

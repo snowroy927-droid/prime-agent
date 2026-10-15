@@ -98,13 +98,14 @@ export interface OrderUpdate {
 	error?: string;
 	at: number;
 }
+// dailyPnl is a decimal string in the desk's minor units (lamports or micro-USD).
 export interface RiskState {
-	autoSnipe: boolean;
+	auto: boolean;
 	paused: boolean;
 	pausedReason: string | null;
 	tiltLosses: number;
 	tiltUntil: number | null;
-	dailyPnlLamports: string;
+	dailyPnl: string;
 	dailyCapUntil: number | null;
 }
 export interface LogLine {

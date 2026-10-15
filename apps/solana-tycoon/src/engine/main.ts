@@ -18,7 +18,7 @@ import { Ledger } from "./ledger/ledger";
 import { ReplayDriver } from "./replay/player";
 import { Recorder } from "./replay/recorder";
 import { readRecording } from "./replay/recording";
-import { RiskGuard } from "./risk/guard";
+import { PUMP_RISK_COPY, pumpLimits, RiskGuard } from "./risk/guard";
 import { LaunchHistory } from "./scout/launchHistory";
 import { Scout } from "./scout/scout";
 import { modeDefaultsFor, SettingsStore } from "./settingsStore";
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const risk = new RiskGuard({ clock, settings: () => settings.get() });
+	const risk = new RiskGuard({ clock, limits: () => pumpLimits(settings.get()), copy: PUMP_RISK_COPY });
 	let core: TradingCore | null = null;
 	const executor = new PaperExecutor({
 		mode,
