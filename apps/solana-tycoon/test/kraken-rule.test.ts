@@ -72,11 +72,12 @@ describe("BarBook", () => {
 		expect(bars.usdVolume("PEPE/USD", 15, NOW)).toBeCloseTo(1.8 + 2);
 	});
 
-	it("lets the latest update of a minute replace that minute's bar and keeps 60 bars", () => {
+	it("lets the latest update of a minute replace that minute's bar and keeps the 60 minutes before it", () => {
 		const bars = new BarBook();
 		for (let i = 70; i >= 0; i--) bars.update({ wsname: "WIF/USD", ...bar(i, 1) });
 		bars.update({ wsname: "WIF/USD", ...bar(0, 3) });
 		expect(bars.change("WIF/USD", 5, NOW)).toBeCloseTo(200);
-		expect(bars.minutesCovered("WIF/USD", NOW)).toBe(59);
+		expect(bars.change("WIF/USD", 60, NOW + 30_000)).toBeCloseTo(200);
+		expect(bars.minutesCovered("WIF/USD", NOW)).toBe(60);
 	});
 });

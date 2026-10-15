@@ -7,10 +7,13 @@ export interface Bar {
 	volume: number;
 }
 
+// The current minute plus the 60 before it, so the 60-minute change always has its reference bar.
+const MAX_BARS = 61;
+
 export class BarBook {
 	private readonly bars = new Map<string, Bar[]>();
 
-	constructor(private readonly maxBars = 60) {}
+	constructor(private readonly maxBars = MAX_BARS) {}
 
 	seed(wsname: string, bars: readonly Bar[]): void {
 		for (const bar of bars) this.put(wsname, bar);
