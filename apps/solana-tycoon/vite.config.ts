@@ -6,5 +6,7 @@ export default defineConfig({
 	build: {
 		outDir: "dist/web",
 		emptyOutDir: true,
+		// The bridge CSP allows fonts from 'self' only, so never inline assets as data: URIs.
+		assetsInlineLimit: 0,
 	},
 });
