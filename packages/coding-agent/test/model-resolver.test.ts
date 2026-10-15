@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import { getModels, type Model } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import {
 	defaultModelPerProvider,
@@ -437,6 +437,12 @@ describe("default model selection", () => {
 
 	test("ai-gateway default tracks current model", () => {
 		expect(defaultModelPerProvider["vercel-ai-gateway"]).toBe("zai/glm-5.1");
+	});
+
+	test("cloudflare ai-gateway default is a listed Claude Sonnet model", () => {
+		const id = defaultModelPerProvider["cloudflare-ai-gateway"];
+		expect(id).toBe("claude-sonnet-5");
+		expect(getModels("cloudflare-ai-gateway").some((model) => model.id === id)).toBe(true);
 	});
 
 	test("findInitialModel accepts explicit provider custom model ids", async () => {
