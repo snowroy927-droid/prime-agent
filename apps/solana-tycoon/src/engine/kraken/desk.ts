@@ -4,6 +4,7 @@ import {
 	type KrakenCommand,
 	type KrakenEvent,
 	type KrakenOrderUpdate,
+	type KrakenPair,
 	type KrakenSettings,
 	type KrakenSnapshot,
 	krakenOutcome,
@@ -123,6 +124,8 @@ export class KrakenDesk {
 	private readonly lastExitAt = new Map<string, number>();
 	private readonly lastPriceEvent = new Map<string, number>();
 	private readonly lastStale = new Map<string, boolean>();
+	// Each held pair's details and bid from its last valuation while listed, for selling it once halted.
+	private readonly lastListed = new Map<string, { info: KrakenPair; bid: string }>();
 	private readonly orders = new Set<Promise<void>>();
 	private readonly moverHours = new Map<number, Set<string>>();
 	private readonly skipCounts = new Map<string, number>();
@@ -236,7 +239,7 @@ export class KrakenDesk {
 				const id = this.positionByPair.get(command.pair);
 				const position = id ? this.positions.get(id) : undefined;
 				if (!position) return fail("No open position");
-				if (position.halted) return fail("Pair halted");
+				if (position.halted && !this.lastListed.has(position.pair)) return fail("Pair halted");
 				return this.placeSell(position.id, command.pct, "manual", "manual");
 			}
 			case "kraken_pin": {
@@ -273,7 +276,8 @@ export class KrakenDesk {
 	kill(): void {
 		this.killActive = true;
 		for (const position of [...this.positions.values()]) {
-			if (!position.pendingOrder && !position.halted) this.placeSell(position.id, 100, "exit", "kill");
+			if (position.pendingOrder || (position.halted && !this.lastListed.has(position.pair))) continue;
+			this.placeSell(position.id, 100, "exit", "kill");
 		}
 		this.deps.risk.setPaused(true, "Kill switch");
 		this.emitRisk(true);
@@ -354,6 +358,7 @@ export class KrakenDesk {
 		const pair = position ? this.deps.universe.byPair(position.pair) : undefined;
 		const quote = position ? this.scanner.quote(position.pair) : null;
 		if (!position || !pair || !quote || position.lots <= 0n) return;
+		this.lastListed.set(position.pair, { info: pair, bid: quote.bid });
 		const sale = quoteSell(
 			position.lots,
 			toScaled(quote.bid, pair.priceDecimals),
@@ -519,7 +524,8 @@ export class KrakenDesk {
 		this.deps.emit({ type: "kraken_order", order: order("pending") });
 		this.emitPosition(positionId);
 		this.track(async () => {
-			const result = await this.deps.executor.sell({ positionId, pair: position.pair, lots });
+			const lastResort = position.halted ? this.lastListed.get(position.pair) : undefined;
+			const result = await this.deps.executor.sell({ positionId, pair: position.pair, lots, lastResort });
 			const current = this.positions.get(positionId);
 			if (!current) return;
 			if (!result.ok) {
@@ -553,6 +559,7 @@ export class KrakenDesk {
 
 	private closePosition(position: KrakenPositionState, reason: ExitReason): void {
 		const now = this.deps.clock.now();
+		this.lastListed.delete(position.pair);
 		const pnl = position.proceedsUsdMicros - position.costUsdMicros;
 		const pnlPct = position.costUsdMicros === 0n ? 0 : (Number(pnl) / Number(position.costUsdMicros)) * 100;
 		this.deps.ledger.appendClose({

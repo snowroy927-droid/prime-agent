@@ -56,7 +56,7 @@ describe("KrakenDesk", () => {
 		expect(h.desk.snapshot().scanStats.skipReasons).toContainEqual({ reason: "Wide spread", count: 1 });
 	});
 
-	it("halts a held pair that leaves the universe: no exits, and manual sell is refused", async () => {
+	it("halts a held pair that leaves the universe: no exits, and a manual sell fills at the last bid", async () => {
 		const h = await harness();
 		h.rest.candles.set("MOONUSD", restRows(NOW));
 		h.ticker("MOON", "1.059", "1.061");
@@ -68,9 +68,31 @@ describe("KrakenDesk", () => {
 		await h.clock.advance(2_000);
 		expect(h.desk.snapshot().positions).toHaveLength(1);
 		expect(await h.desk.handleCommand({ type: "kraken_sell", id: "s", pair: "MOONUSD", pct: 100 })).toEqual({
-			ok: false,
-			error: "Pair halted",
+			ok: true,
 		});
+		await h.clock.advance(400);
+		expect(h.desk.snapshot().positions).toEqual([]);
+		const close = h.events.find((event) => event.type === "kraken_close");
+		expect(close?.type === "kraken_close" && close.trade.reason).toBe("manual");
+		// Sold at the last listed bid (1.059), not the 0.90 seen after the pair left: only round-trip costs are lost.
+		expect(close?.type === "kraken_close" && close.trade.pnlPct).toBeGreaterThan(-2.5);
+	});
+
+	it("kill sells a halted position at its last bid too", async () => {
+		const h = await harness();
+		h.rest.candles.set("MOONUSD", restRows(NOW));
+		h.ticker("MOON", "1.059", "1.061");
+		await h.clock.advance(11_000);
+		h.rest.pairs = { WIDEUSD: usdPair("WIDE") };
+		await h.universe.refresh();
+		h.desk.kill();
+		await h.clock.advance(400);
+		expect(h.desk.snapshot().positions).toEqual([]);
+		expect(
+			h.events
+				.filter((event) => event.type === "kraken_close")
+				.map((event) => event.type === "kraken_close" && event.trade.reason),
+		).toEqual(["kill"]);
 	});
 
 	it("keeps scanning when candle seeding is rate-limited and buys once live bars cover 15 minutes", async () => {

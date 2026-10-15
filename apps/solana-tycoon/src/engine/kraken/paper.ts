@@ -1,4 +1,4 @@
-import type { KrakenFill, KrakenSettings } from "../../shared/kraken";
+import type { KrakenFill, KrakenPair, KrakenSettings } from "../../shared/kraken";
 import type { Mode, Side } from "../../shared/types";
 import type { Clock } from "../clock";
 import { quoteBuy, quoteSell, toScaled } from "./money";
@@ -40,14 +40,30 @@ export class KrakenPaperExecutor {
 		);
 	}
 
-	async sell(r: { positionId: string; pair: string; lots: bigint }): Promise<KrakenFillResult> {
+	// A halted pair sells only with `lastResort`: the pair's details and last bid from while it was listed
+	// (spec Section 13: manual SELL tries at the last bid).
+	async sell(r: {
+		positionId: string;
+		pair: string;
+		lots: bigint;
+		lastResort?: { info: KrakenPair; bid: string };
+	}): Promise<KrakenFillResult> {
 		const paper = this.deps.settings().paper;
 		await this.deps.clock.sleep(paper.latencyMs);
-		const pair = this.deps.universe.byPair(r.pair);
-		if (!pair || this.deps.halted(r.pair)) return { ok: false, error: "Pair halted" };
-		const quote = this.deps.quote(r.pair);
-		if (!quote) return { ok: false, error: `No price for ${pair.symbol}` };
-		const result = quoteSell(r.lots, toScaled(quote.bid, pair.priceDecimals), pair, paper);
+		const listed = this.deps.universe.byPair(r.pair);
+		let pair: KrakenPair;
+		let bid: string;
+		if (!listed || this.deps.halted(r.pair)) {
+			if (!r.lastResort) return { ok: false, error: "Pair halted" };
+			pair = r.lastResort.info;
+			bid = r.lastResort.bid;
+		} else {
+			const quote = this.deps.quote(r.pair);
+			if (!quote) return { ok: false, error: `No price for ${listed.symbol}` };
+			pair = listed;
+			bid = quote.bid;
+		}
+		const result = quoteSell(r.lots, toScaled(bid, pair.priceDecimals), pair, paper);
 		if (!result.ok) return result;
 		const gross = result.proceedsUsdMicros + result.feesUsdMicros;
 		return this.filled(r.positionId, pair.pair, pair.symbol, "sell", gross, r.lots, result.feesUsdMicros);

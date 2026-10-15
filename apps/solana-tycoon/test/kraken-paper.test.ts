@@ -72,6 +72,27 @@ describe("KrakenPaperExecutor", () => {
 		});
 	});
 
+	it("sells a halted pair only at the last bid it is given, with the pair details it was bought under", async () => {
+		const h = setup();
+		const info = h.universe.byPair("PEPEUSD");
+		if (!info) throw new Error("expected PEPEUSD");
+		h.universe.apply({});
+		const sale = h.executor.sell({
+			positionId: "k1",
+			pair: "PEPEUSD",
+			lots: 1_000_000n,
+			lastResort: { info, bid: "0.00001100" },
+		});
+		const refused = h.executor.sell({ positionId: "k2", pair: "PEPEUSD", lots: 1_000_000n });
+		await h.clock.advance(300);
+		const result = await sale;
+		if (!result.ok) throw new Error(result.error);
+		expect(result.fill).toMatchObject({ side: "sell", pair: "PEPEUSD", symbol: "PEPE", lots: "1000000" });
+		expect(BigInt(result.fill.usdMicros)).toBeLessThan(11_000_000n);
+		expect(BigInt(result.fill.usdMicros)).toBeGreaterThan(10_900_000n);
+		expect(await refused).toEqual({ ok: false, error: "Pair halted" });
+	});
+
 	it("refuses a halted pair and a pair without a price", async () => {
 		const h = setup();
 		h.halted.add("PEPEUSD");
