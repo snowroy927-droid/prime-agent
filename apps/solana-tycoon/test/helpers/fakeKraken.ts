@@ -32,11 +32,13 @@ export class FakeKrakenFeed implements KrakenFeedLike {
 
 export class FakeKrakenRest implements KrakenRestLike {
 	pairs: Record<string, unknown> = {};
+	assetPairsError: Error | null = null;
 	candles = new Map<string, unknown[][]>();
 	ohlcError: Error | null = null;
 	ohlcCalls: string[] = [];
 
 	async assetPairs(): Promise<unknown> {
+		if (this.assetPairsError) throw this.assetPairsError;
 		return structuredClone(this.pairs);
 	}
 

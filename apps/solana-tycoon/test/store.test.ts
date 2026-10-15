@@ -35,6 +35,7 @@ function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
 		serverTime: NOW,
 		clockRate: 1,
 		startedAt: NOW,
+		kraken: null,
 		...over,
 	};
 }

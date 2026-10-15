@@ -161,6 +161,20 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 			return { ...state, snapshot: { ...snapshot, settings: event.settings } };
 		case "pinned":
 			return { ...state, snapshot: { ...snapshot, pinned: event.mints } };
+		case "kraken_movers":
+		case "kraken_price":
+		case "kraken_order":
+		case "kraken_position":
+		case "kraken_close":
+		case "kraken_stats":
+		case "kraken_feed":
+		case "kraken_risk":
+		case "kraken_balance":
+		case "kraken_settings":
+		case "kraken_pinned":
+		case "kraken_sol_usd":
+		case "kraken_offline":
+			return state;
 	}
 }
 

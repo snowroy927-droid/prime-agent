@@ -7,12 +7,12 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { CommandSchema, PROTOCOL_VERSION, type ServerMessage } from "../../shared/protocol";
 import type { Mode } from "../../shared/types";
 import type { EngineBus } from "../bus";
-import type { TradingCore } from "../core/tradingCore";
+import type { Engine } from "../core/engine";
 
 export interface BridgeOptions {
 	port: number;
 	staticDir: string;
-	core: Pick<TradingCore, "snapshot" | "handleCommand">;
+	core: Pick<Engine, "snapshot" | "handleCommand">;
 	bus: EngineBus;
 	token: string;
 	mode: Mode;

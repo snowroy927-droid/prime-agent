@@ -1,5 +1,5 @@
 import { type Outcome, pumpOutcome } from "../../shared/outcome";
-import type { Ack, Command, EngineEvent, EngineSnapshot } from "../../shared/protocol";
+import type { Ack, EngineEvent, EngineSnapshot, PumpCommand } from "../../shared/protocol";
 import { HARD_LIMITS } from "../../shared/settings";
 import { computeLaunchStats, computeStats } from "../../shared/stats";
 import type {
@@ -138,7 +138,7 @@ export class TradingCore {
 		await Promise.allSettled([...this.orders]);
 	}
 
-	snapshot(): EngineSnapshot {
+	snapshot(): Omit<EngineSnapshot, "kraken"> {
 		const now = this.deps.clock.now();
 		const settings = this.deps.settings.get();
 		return {
@@ -161,7 +161,7 @@ export class TradingCore {
 		};
 	}
 
-	async handleCommand(command: Command): Promise<Ack> {
+	async handleCommand(command: PumpCommand): Promise<Ack> {
 		const ack = (result: Result): Ack =>
 			result.ok
 				? { type: "ack", id: command.id, ok: true }

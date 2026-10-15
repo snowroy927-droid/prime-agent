@@ -35,6 +35,7 @@ function snapshot(closes: ClosedTrade[] = []): EngineSnapshot {
 		serverTime: NOW,
 		clockRate: 1,
 		startedAt: 0,
+		kraken: null,
 	};
 }
 

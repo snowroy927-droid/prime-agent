@@ -5,32 +5,20 @@ import type { BondingCurve } from "@pump-fun/pump-sdk";
 import BN from "bn.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { EngineBus } from "../src/engine/bus";
-import { RpcBudget } from "../src/engine/chain/rpcBudget";
 import { web3 } from "../src/engine/chain/solana";
 import { ManualClock } from "../src/engine/clock";
-import { TradingCore } from "../src/engine/core/tradingCore";
+import type { TradingCore } from "../src/engine/core/tradingCore";
 import { Ledger } from "../src/engine/ledger/ledger";
-import { PUMP_RISK_COPY, pumpLimits, RiskGuard } from "../src/engine/risk/guard";
-import { LaunchHistory } from "../src/engine/scout/launchHistory";
-import { Scout } from "../src/engine/scout/scout";
-import { SettingsStore } from "../src/engine/settingsStore";
-import { PaperExecutor } from "../src/engine/trader/paper";
-import type { Ack, Command, EngineEvent } from "../src/shared/protocol";
+import type { Ack, EngineEvent, PumpCommand } from "../src/shared/protocol";
 import type { Launch } from "../src/shared/types";
 import { fixtureCurve, fixturePoolSnapshot } from "./helpers/curves";
-import { FakeChain } from "./helpers/fakeChain";
-import { FakeFeed } from "./helpers/fakeFeed";
+import { buildPumpCore, healthyCoin, type PumpRig } from "./helpers/pumpCore";
 
 const START = Date.UTC(2026, 9, 15, 12, 0);
-const SUPPLY = 1_000_000_000_000_000n;
 
-interface Harness {
+interface Harness extends PumpRig {
 	core: TradingCore;
-	clock: ManualClock;
-	chain: FakeChain;
-	feed: FakeFeed;
 	events: EngineEvent[];
-	ledgerPath: string;
 }
 
 const dirs: string[] = [];
@@ -41,56 +29,16 @@ afterEach(async () => {
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-async function harness(opts: { budgetPerSec?: number; prepare?: (h: Omit<Harness, "core" | "events">) => void } = {}) {
+async function harness(opts: { budgetPerSec?: number; prepare?: (h: PumpRig) => void } = {}): Promise<Harness> {
 	const dir = mkdtempSync(join(tmpdir(), "core-"));
 	dirs.push(dir);
-	const clock = new ManualClock(START);
-	const budget = new RpcBudget(opts.budgetPerSec ?? 1_000, clock);
-	const chain = new FakeChain(clock, budget);
-	const feed = new FakeFeed();
-	const ledgerPath = join(dir, "ledger.jsonl");
-	opts.prepare?.({ clock, chain, feed, ledgerPath });
 	const bus = new EngineBus();
 	const events: EngineEvent[] = [];
 	bus.on((event) => events.push(event));
-	const settings = new SettingsStore(join(dir, "settings.json"), {});
-	const history = new LaunchHistory(null, clock);
-	let core: TradingCore | null = null;
-	const executor = new PaperExecutor({
-		mode: "paper",
-		chain,
-		globals: () => {
-			if (!core) throw new Error("core not constructed");
-			return core.globals();
-		},
-		clock,
-		settings: () => settings.get(),
-	});
-	core = new TradingCore({
-		mode: "paper",
-		synthetic: false,
-		feed,
-		chain,
-		executor,
-		ledger: new Ledger(ledgerPath),
-		history,
-		scout: new Scout({ chain, budget, history, clock, settings: () => settings.get() }),
-		risk: new RiskGuard({
-			clock,
-			limits: () => pumpLimits(settings.get()),
-			copy: PUMP_RISK_COPY,
-			tzOffsetMin: () => 0,
-		}),
-		budget,
-		clock,
-		bus,
-		settings,
-		publicRpcFallback: false,
-		tzOffsetMin: () => 0,
-	});
-	cores.push(core);
-	await core.start();
-	return { core, clock, chain, feed, events, ledgerPath };
+	const rig = buildPumpCore({ dir, clock: new ManualClock(START), bus, ...opts });
+	cores.push(rig.core);
+	await rig.core.start();
+	return { ...rig, events };
 }
 
 let mintCounter = 0;
@@ -109,17 +57,6 @@ function newLaunch(clock: ManualClock, over: Partial<Launch> = {}): Launch {
 	};
 }
 
-function healthyCoin(h: Pick<Harness, "chain">, mint: string, holders = 12): BondingCurve {
-	const curve = fixtureCurve({ realQuoteReserves: new BN(1_500_000_000) });
-	h.chain.setCurve(mint, curve);
-	h.chain.setHolders(mint, {
-		supply: SUPPLY,
-		curveAccount: "curve",
-		holders: Array.from({ length: holders }, (_, i) => ({ account: `h${i}`, amount: SUPPLY / 100n })),
-	});
-	return curve;
-}
-
 function scaledPrice(curve: BondingCurve, factor: number): BondingCurve {
 	return {
 		...curve,
@@ -136,7 +73,7 @@ const ledgerLines = (path: string) =>
 		.split("\n")
 		.map((line) => JSON.parse(line) as { kind: string; side?: string; reason?: string });
 
-async function cmd(core: TradingCore, command: Command): Promise<Ack> {
+async function cmd(core: TradingCore, command: PumpCommand): Promise<Ack> {
 	return core.handleCommand(command);
 }
 

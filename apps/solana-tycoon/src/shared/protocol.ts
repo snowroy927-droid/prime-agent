@@ -1,4 +1,15 @@
 import { z } from "zod";
+import {
+	type KrakenClosedTrade,
+	type KrakenCommand,
+	type KrakenOrderUpdate,
+	type KrakenPosition,
+	KrakenSettingsSchema,
+	type KrakenSnapshot,
+	type Mover,
+	type RuleStatus,
+	type ScanStats,
+} from "./kraken";
 import { SettingsSchema } from "./settings";
 import type { LaunchStats, Stats } from "./stats";
 import type {
@@ -17,6 +28,7 @@ import type {
 export const PROTOCOL_VERSION = 2;
 
 export const LamportsSchema = z.string().regex(/^-?\d+$/, "expected an integer string");
+export const DecimalSchema = z.string().regex(/^-?\d+(\.\d+)?$/, "expected a decimal string");
 
 export const ModeSchema = z.enum(["paper", "live", "replay", "demo"]);
 export const FeedStatusSchema = z.enum(["connecting", "live", "down"]);
@@ -182,6 +194,98 @@ const FeedStateShape = {
 	reconnectAt: z.number().nullable(),
 };
 
+export const RuleStatusSchema = z.enum([
+	"eligible",
+	"warming_up",
+	"low_volume",
+	"wide_spread",
+	"small_move",
+	"not_rising",
+	"no_volume_surge",
+	"held",
+	"cooldown",
+]) satisfies z.ZodType<RuleStatus>;
+
+export const MoverSchema = z.object({
+	pair: z.string(),
+	symbol: z.string(),
+	last: DecimalSchema,
+	bid: DecimalSchema,
+	ask: DecimalSchema,
+	change5m: z.number().nullable(),
+	change15m: z.number().nullable(),
+	change60m: z.number().nullable(),
+	volumeUsd24h: z.number(),
+	spreadPct: z.number(),
+	status: RuleStatusSchema,
+	reason: z.string(),
+}) satisfies z.ZodType<Mover>;
+
+export const KrakenPositionSchema = z.object({
+	id: z.string(),
+	mode: ModeSchema,
+	pair: z.string(),
+	symbol: z.string(),
+	openedAt: z.number(),
+	costUsdMicros: LamportsSchema,
+	proceedsUsdMicros: LamportsSchema,
+	lots: LamportsSchema,
+	valueUsdMicros: LamportsSchema.nullable(),
+	pnlPct: z.number().nullable(),
+	peakPnlPct: z.number(),
+	price: DecimalSchema.nullable(),
+	priceAt: z.number().nullable(),
+	stale: z.boolean(),
+	halted: z.boolean(),
+	pendingOrder: z.boolean(),
+}) satisfies z.ZodType<KrakenPosition>;
+
+export const KrakenClosedTradeSchema = z.object({
+	positionId: z.string(),
+	mode: ModeSchema,
+	pair: z.string(),
+	symbol: z.string(),
+	costUsdMicros: LamportsSchema,
+	proceedsUsdMicros: LamportsSchema,
+	pnlUsdMicros: LamportsSchema,
+	pnlPct: z.number(),
+	reason: ExitReasonSchema,
+	openedAt: z.number(),
+	closedAt: z.number(),
+}) satisfies z.ZodType<KrakenClosedTrade>;
+
+export const KrakenOrderUpdateSchema = z.object({
+	id: z.string(),
+	positionId: z.string(),
+	pair: z.string(),
+	symbol: z.string(),
+	side: SideSchema,
+	status: OrderStatusSchema,
+	source: z.enum(["auto", "manual", "exit"]),
+	error: z.string().optional(),
+	at: z.number(),
+}) satisfies z.ZodType<KrakenOrderUpdate>;
+
+export const ScanStatsSchema = z.object({
+	moversPerHour: z.array(z.number().int()),
+	skipReasons: z.array(z.object({ reason: z.string(), count: z.number().int() })),
+}) satisfies z.ZodType<ScanStats>;
+
+export const KrakenSnapshotSchema = z.object({
+	error: z.string().nullable(),
+	feed: z.object(FeedStateShape),
+	movers: z.array(MoverSchema).max(50),
+	positions: z.array(KrakenPositionSchema),
+	closes: z.array(KrakenClosedTradeSchema).max(500),
+	stats: StatsSchema,
+	scanStats: ScanStatsSchema,
+	risk: RiskStateSchema,
+	settings: KrakenSettingsSchema,
+	pinned: z.array(z.string()),
+	balanceUsdMicros: LamportsSchema,
+	solUsd: z.object({ price: DecimalSchema, at: z.number() }).nullable(),
+}) satisfies z.ZodType<KrakenSnapshot>;
+
 export const EngineSnapshotSchema = z.object({
 	mode: ModeSchema,
 	synthetic: z.boolean(),
@@ -201,6 +305,8 @@ export const EngineSnapshotSchema = z.object({
 	clockRate: z.number().positive(),
 	// When this engine process started, on the engine clock; session PnL counts from here.
 	startedAt: z.number(),
+	// Null when the Kraken desk is off (KRAKEN=off, or a mode without it).
+	kraken: KrakenSnapshotSchema.nullable(),
 });
 
 export const EngineEventSchema = z.discriminatedUnion("type", [
@@ -224,14 +330,36 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("settings"), settings: SettingsSchema }),
 	z.object({ type: z.literal("pinned"), mints: z.array(z.string()) }),
 	z.object({ type: z.literal("log"), line: LogLineSchema }),
+	z.object({ type: z.literal("kraken_movers"), movers: z.array(MoverSchema).max(50) }),
+	z.object({
+		type: z.literal("kraken_price"),
+		pair: z.string(),
+		bid: DecimalSchema,
+		ask: DecimalSchema,
+		last: DecimalSchema,
+		at: z.number(),
+	}),
+	z.object({ type: z.literal("kraken_order"), order: KrakenOrderUpdateSchema }),
+	z.object({ type: z.literal("kraken_position"), position: KrakenPositionSchema }),
+	z.object({ type: z.literal("kraken_close"), trade: KrakenClosedTradeSchema }),
+	z.object({ type: z.literal("kraken_stats"), stats: StatsSchema, scanStats: ScanStatsSchema }),
+	z.object({ type: z.literal("kraken_feed"), ...FeedStateShape }),
+	z.object({ type: z.literal("kraken_risk"), risk: RiskStateSchema }),
+	z.object({ type: z.literal("kraken_balance"), usdMicros: LamportsSchema }),
+	z.object({ type: z.literal("kraken_settings"), settings: KrakenSettingsSchema }),
+	z.object({ type: z.literal("kraken_pinned"), pairs: z.array(z.string()) }),
+	z.object({ type: z.literal("kraken_sol_usd"), price: DecimalSchema, at: z.number() }),
+	z.object({ type: z.literal("kraken_offline"), error: z.string() }),
 ]);
 
 const CommandId = z.string().min(1);
 const Mint = z.string().min(1);
+const Pair = z.string().min(1);
+const SellPct = z.union([z.literal(50), z.literal(100)]);
 
-export const CommandSchema = z.discriminatedUnion("type", [
+export const PumpCommandSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("snipe"), id: CommandId, mint: Mint, holdConfirmed: z.boolean().optional() }),
-	z.object({ type: z.literal("sell"), id: CommandId, mint: Mint, pct: z.union([z.literal(50), z.literal(100)]) }),
+	z.object({ type: z.literal("sell"), id: CommandId, mint: Mint, pct: SellPct }),
 	z.object({ type: z.literal("pin"), id: CommandId, mint: Mint }),
 	z.object({ type: z.literal("unpin"), id: CommandId, mint: Mint }),
 	z.object({ type: z.literal("pause"), id: CommandId }),
@@ -239,6 +367,18 @@ export const CommandSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("kill"), id: CommandId }),
 	z.object({ type: z.literal("setSettings"), id: CommandId, patch: z.unknown() }),
 ]);
+
+export const KrakenCommandSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("kraken_buy"), id: CommandId, pair: Pair, holdConfirmed: z.boolean().optional() }),
+	z.object({ type: z.literal("kraken_sell"), id: CommandId, pair: Pair, pct: SellPct }),
+	z.object({ type: z.literal("kraken_pin"), id: CommandId, pair: Pair }),
+	z.object({ type: z.literal("kraken_unpin"), id: CommandId, pair: Pair }),
+	z.object({ type: z.literal("kraken_pause"), id: CommandId }),
+	z.object({ type: z.literal("kraken_resume"), id: CommandId }),
+	z.object({ type: z.literal("kraken_setSettings"), id: CommandId, patch: z.unknown() }),
+]) satisfies z.ZodType<KrakenCommand>;
+
+export const CommandSchema = z.discriminatedUnion("type", [PumpCommandSchema, KrakenCommandSchema]);
 
 export const AckSchema = z.object({
 	type: z.literal("ack"),
@@ -252,6 +392,7 @@ export const ServerMessageSchema = z.union([EngineEventSchema, AckSchema]);
 export type EngineSnapshot = z.infer<typeof EngineSnapshotSchema>;
 export type EngineEvent = z.infer<typeof EngineEventSchema>;
 export type Command = z.infer<typeof CommandSchema>;
+export type PumpCommand = z.infer<typeof PumpCommandSchema>;
 export type Ack = z.infer<typeof AckSchema>;
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;

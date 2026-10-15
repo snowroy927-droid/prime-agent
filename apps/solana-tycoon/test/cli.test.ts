@@ -67,6 +67,7 @@ describe("readEnv", () => {
 			port: 7777,
 			rpcMaxRps: 5,
 			publicFallback: true,
+			kraken: true,
 		});
 	});
 
@@ -87,10 +88,17 @@ describe("readEnv", () => {
 			port: 8080,
 			rpcMaxRps: 20,
 			publicFallback: false,
+			kraken: true,
 		});
 		expect(readEnv({ RPC_URL: "https://rpc.example", RPC_WS_URL: "wss://ws.example" }).rpcWsUrl).toBe(
 			"wss://ws.example",
 		);
+	});
+
+	it("turns the Kraken desk off only with KRAKEN=off", () => {
+		expect(readEnv({ KRAKEN: "off" }).kraken).toBe(false);
+		expect(readEnv({ KRAKEN: "on" }).kraken).toBe(true);
+		expect(readEnv({}).kraken).toBe(true);
 	});
 
 	it("rejects invalid values with the key name", () => {

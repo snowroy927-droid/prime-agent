@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	DEFAULT_KRAKEN_SETTINGS,
+	type KrakenClosedTrade,
+	type KrakenSnapshot,
+	krakenOutcome,
+	type Mover,
+} from "../src/shared/kraken";
+import {
 	AckSchema,
 	CommandSchema,
 	type EngineEvent,
@@ -9,7 +16,7 @@ import {
 	ServerMessageSchema,
 } from "../src/shared/protocol";
 import { DEFAULT_SETTINGS } from "../src/shared/settings";
-import { computeLaunchStats, computeStats } from "../src/shared/stats";
+import { computeLaunchStats, computeStats, computeStatsOf } from "../src/shared/stats";
 import type { CheckResult, Launch, Position } from "../src/shared/types";
 import { closed } from "./helpers/trades";
 
@@ -79,6 +86,80 @@ function snapshot(): EngineSnapshot {
 		serverTime: 5_000,
 		clockRate: 1,
 		startedAt: 0,
+		kraken: null,
+	};
+}
+
+const mover: Mover = {
+	pair: "MOONUSD",
+	symbol: "MOON",
+	last: "1.06",
+	bid: "1.059",
+	ask: "1.061",
+	change5m: 1.2,
+	change15m: 6,
+	change60m: null,
+	volumeUsd24h: 1_200_000,
+	spreadPct: 0.19,
+	status: "eligible",
+	reason: "+6.0% in 15m",
+};
+
+const krakenTrade: KrakenClosedTrade = {
+	positionId: "k1",
+	mode: "paper",
+	pair: "MOONUSD",
+	symbol: "MOON",
+	costUsdMicros: "50400000",
+	proceedsUsdMicros: "53500000",
+	pnlUsdMicros: "3100000",
+	pnlPct: 6.15,
+	reason: "take_profit",
+	openedAt: 2_000,
+	closedAt: 3_000,
+};
+
+function krakenSnapshot(): KrakenSnapshot {
+	return {
+		error: null,
+		feed: { status: "live", dropped: 3, reconnectAt: null },
+		movers: [mover],
+		positions: [
+			{
+				id: "k2",
+				mode: "paper",
+				pair: "WIDEUSD",
+				symbol: "WIDE",
+				openedAt: 4_000,
+				costUsdMicros: "50400000",
+				proceedsUsdMicros: "0",
+				lots: "2500",
+				valueUsdMicros: null,
+				pnlPct: null,
+				peakPnlPct: 0,
+				price: null,
+				priceAt: null,
+				stale: true,
+				halted: false,
+				pendingOrder: false,
+			},
+		],
+		closes: [krakenTrade],
+		stats: computeStatsOf([krakenOutcome(krakenTrade)], 0, 1_000_000),
+		scanStats: { moversPerHour: Array(24).fill(0), skipReasons: [{ reason: "Wide spread", count: 2 }] },
+		risk: {
+			auto: true,
+			paused: false,
+			pausedReason: null,
+			tiltLosses: 0,
+			tiltUntil: null,
+			dailyPnl: "3100000",
+			dailyCapUntil: null,
+		},
+		settings: DEFAULT_KRAKEN_SETTINGS,
+		pinned: ["MOONUSD"],
+		balanceUsdMicros: "952700000",
+		solUsd: { price: "150.25", at: 4_500 },
 	};
 }
 
@@ -87,6 +168,35 @@ describe("protocol", () => {
 		const event: EngineEvent = { type: "snapshot", snapshot: snapshot() };
 		const parsed = EngineEventSchema.parse(JSON.parse(JSON.stringify(event)));
 		expect(parsed).toEqual(event);
+	});
+
+	it("round-trips a snapshot with a Kraken section and Kraken events", () => {
+		const event: EngineEvent = { type: "snapshot", snapshot: { ...snapshot(), kraken: krakenSnapshot() } };
+		expect(EngineEventSchema.parse(JSON.parse(JSON.stringify(event)))).toEqual(event);
+		const close: EngineEvent = { type: "kraken_close", trade: krakenTrade };
+		expect(EngineEventSchema.parse(close)).toEqual(close);
+		expect(EngineEventSchema.parse({ type: "kraken_offline", error: "fetch failed" })).toEqual({
+			type: "kraken_offline",
+			error: "fetch failed",
+		});
+	});
+
+	it("caps Kraken movers at 50 per snapshot", () => {
+		const kraken = { ...krakenSnapshot(), movers: Array(51).fill(mover) };
+		expect(EngineEventSchema.safeParse({ type: "snapshot", snapshot: { ...snapshot(), kraken } }).success).toBe(
+			false,
+		);
+	});
+
+	it("validates Kraken commands", () => {
+		expect(CommandSchema.safeParse({ type: "kraken_sell", id: "1", pair: "MOONUSD", pct: 30 }).success).toBe(false);
+		expect(CommandSchema.safeParse({ type: "kraken_sell", id: "1", pair: "MOONUSD", pct: 100 }).success).toBe(true);
+		expect(CommandSchema.parse({ type: "kraken_buy", id: "2", pair: "MOONUSD" })).toEqual({
+			type: "kraken_buy",
+			id: "2",
+			pair: "MOONUSD",
+		});
+		expect(CommandSchema.safeParse({ type: "kraken_pin", id: "3", pair: "" }).success).toBe(false);
 	});
 
 	it("parses hello and acks as server messages", () => {

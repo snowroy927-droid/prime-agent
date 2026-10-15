@@ -182,4 +182,31 @@ describe("BridgeServer WebSocket", () => {
 		expect(b.messages).toContainEqual({ type: "balance", lamports: "42" });
 		expect(b.messages.some((m) => m.type === "ack")).toBe(false);
 	});
+
+	it("delivers Kraken events to every client", async () => {
+		const a = await connect(`?token=${token}`);
+		const b = await connect(`?token=${token}`);
+		await waitFor(() => a.messages.length >= 2 && b.messages.length >= 2);
+		const event = {
+			type: "kraken_close",
+			trade: {
+				positionId: "k1",
+				mode: "paper",
+				pair: "MOONUSD",
+				symbol: "MOON",
+				costUsdMicros: "50400000",
+				proceedsUsdMicros: "53500000",
+				pnlUsdMicros: "3100000",
+				pnlPct: 6.15,
+				reason: "take_profit",
+				openedAt: 2_000,
+				closedAt: 3_000,
+			},
+		} as const;
+		bus.emit(event);
+		await waitFor(() => a.messages.some((m) => m.type === "kraken_close"));
+		await waitFor(() => b.messages.some((m) => m.type === "kraken_close"));
+		expect(a.messages).toContainEqual(event);
+		expect(b.messages).toContainEqual(event);
+	});
 });

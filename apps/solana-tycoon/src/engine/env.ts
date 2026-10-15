@@ -8,6 +8,7 @@ export interface EnvConfig {
 	port: number;
 	rpcMaxRps: number;
 	publicFallback: boolean;
+	kraken: boolean;
 }
 
 export const PUBLIC_RPC_URL = "https://api.mainnet-beta.solana.com";
@@ -32,5 +33,6 @@ export function readEnv(env: Record<string, string | undefined>): EnvConfig {
 		port: parsePort(value(env, "PORT") ?? "7777", "PORT"),
 		rpcMaxRps: rps,
 		publicFallback: configuredRpc === null || configuredRpc.replace(/\/+$/, "") === PUBLIC_RPC_URL,
+		kraken: value(env, "KRAKEN")?.toLowerCase() !== "off",
 	};
 }
