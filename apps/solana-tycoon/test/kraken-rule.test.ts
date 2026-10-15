@@ -42,6 +42,20 @@ describe("evaluateRule", () => {
 		});
 	});
 
+	it("measures the volume surge against the minutes of history it actually has", () => {
+		// 16 minutes of flat volume: the last 15 minutes are 15/16 of everything seen, which is no surge.
+		const flat = { ...base, minutesCovered: 16, usdVolume15m: 15_000, usdVolume60m: 16_000 };
+		expect(evaluateRule(flat, s)).toEqual({
+			status: "no_volume_surge",
+			reason: "Volume 1.0x hourly pace (needs 2x)",
+		});
+		const surge = { ...base, minutesCovered: 30, usdVolume15m: 20_000, usdVolume60m: 20_000 + 5_000 };
+		expect(evaluateRule(surge, s).status).toBe("no_volume_surge");
+		// 45 minutes: $20k in the last 15 against $8k in the 30 before is a real surge.
+		const real = { ...base, minutesCovered: 45, usdVolume15m: 20_000, usdVolume60m: 20_000 + 8_000 };
+		expect(evaluateRule(real, s).status).toBe("eligible");
+	});
+
 	it("reports the first failing condition in order", () => {
 		expect(evaluateRule({ ...base, minutesCovered: 14 }, s)).toEqual({
 			status: "warming_up",

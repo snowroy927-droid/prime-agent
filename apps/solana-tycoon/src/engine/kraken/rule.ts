@@ -48,7 +48,10 @@ export function evaluateRule(input: RuleInput, s: KrakenSettings): { status: Rul
 	if (s.rule.requireRising5m && !(input.change5m !== null && input.change5m > 0)) {
 		return { status: "not_rising", reason: "Falling over 5m" };
 	}
-	const hourlyPace = input.usdVolume60m / 4;
+	// The pace per 15 minutes over the history actually held (up to an hour), so a pair with only a few minutes of
+	// live bars cannot pass by comparing its last 15 minutes with themselves.
+	const window = Math.min(60, Math.max(WARM_UP_MIN, input.minutesCovered));
+	const hourlyPace = (input.usdVolume60m * 15) / window;
 	if (input.usdVolume15m < s.rule.volumeSurge * hourlyPace) {
 		const ratio = hourlyPace > 0 ? input.usdVolume15m / hourlyPace : 0;
 		return {
