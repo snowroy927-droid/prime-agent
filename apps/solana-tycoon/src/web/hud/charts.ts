@@ -223,6 +223,108 @@ export function drawLine(
 	return pts.map((p, i) => ({ cx: screen[i].cx, cy: screen[i].cy, label: fx(p.x), value: fy(p.y) }));
 }
 
+export interface Series {
+	label: string;
+	color: string;
+	points: { x: number; y: number }[];
+}
+
+// Several series on one shared y-axis: 2px lines, an end dot, and a direct label per series in text ink.
+// Hits are ordered by x so arrow keys walk through time.
+export function drawLines(
+	ctx: CanvasRenderingContext2D,
+	series: readonly Series[],
+	box: Box,
+	colors: ChartColors,
+	format: Format = {},
+): Hit[] {
+	const drawn = series.filter((item) => item.points.length > 0);
+	if (drawn.length === 0) return [];
+	const fy = format.y ?? defaultFormat;
+	const fx = format.x ?? defaultFormat;
+	ctx.font = AXIS_FONT;
+	const labelOf = (item: Series) => `${item.label} ${fy(item.points[item.points.length - 1].y)}`;
+	const labelWidth = Math.min(
+		box.w * 0.4,
+		Math.max(...drawn.map((item) => ctx.measureText(labelOf(item)).width)) + 16,
+	);
+	const area = plotArea({ ...box, w: box.w - labelWidth });
+	const all = drawn.flatMap((item) => item.points);
+	const [y0, y1] = extent(
+		all.map((p) => p.y),
+		true,
+	);
+	const ticks = niceTicks(y0, y1, 4);
+	const sy = scaleLinear([ticks[0], ticks[ticks.length - 1]], [area.y + area.h, area.y]);
+	const [x0, x1] = extent(
+		all.map((p) => p.x),
+		false,
+	);
+	const sx = x0 === x1 ? () => area.x + area.w / 2 : scaleLinear([x0, x1], [area.x, area.x + area.w]);
+	yAxis(ctx, area, ticks, sy, colors, fy);
+
+	const hits: Hit[] = [];
+	const ends: { cy: number; cx: number; text: string }[] = [];
+	for (const item of drawn) {
+		const screen = item.points.map((p) => ({ cx: sx(p.x), cy: sy(p.y) }));
+		ctx.strokeStyle = item.color;
+		ctx.lineWidth = 2;
+		ctx.lineJoin = "round";
+		ctx.lineCap = "round";
+		ctx.beginPath();
+		for (const [i, p] of screen.entries()) {
+			if (i === 0) ctx.moveTo(p.cx, p.cy);
+			else ctx.lineTo(p.cx, p.cy);
+		}
+		ctx.stroke();
+		const end = screen[screen.length - 1];
+		ctx.fillStyle = colors.surface;
+		ctx.beginPath();
+		ctx.arc(end.cx, end.cy, 6, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.fillStyle = item.color;
+		ctx.beginPath();
+		ctx.arc(end.cx, end.cy, 4, 0, Math.PI * 2);
+		ctx.fill();
+		ends.push({ cx: end.cx, cy: end.cy, text: labelOf(item) });
+		item.points.forEach((p, i) => {
+			hits.push({ cx: screen[i].cx, cy: screen[i].cy, label: `${item.label} ${fx(p.x)}`, value: fy(p.y) });
+		});
+	}
+
+	// Direct labels sit right of each end dot, nudged apart when two ends are close.
+	ends.sort((a, b) => a.cy - b.cy);
+	for (let i = 1; i < ends.length; i++) ends[i].cy = Math.max(ends[i].cy, ends[i - 1].cy + 16);
+	ctx.font = AXIS_FONT;
+	ctx.fillStyle = colors.text;
+	ctx.textAlign = "left";
+	ctx.textBaseline = "middle";
+	for (const end of ends) ctx.fillText(end.text, end.cx + 10, end.cy);
+
+	xLabels(
+		ctx,
+		area,
+		[
+			{ x: sx(x0), text: fx(x0) },
+			{ x: sx(x1), text: fx(x1) },
+		],
+		colors,
+	);
+	return hits.sort((a, b) => a.cx - b.cx);
+}
+
+const NO_RATE_NOTE = "No SOL/USD price; pump.fun shown in SOL";
+
+// Realized PnL across both desks in USD. Without a SOL/USD rate there is no honest total.
+export function combinedRealizedUsd(
+	pumpRealizedSol: number,
+	solUsd: number | null,
+	krakenRealizedUsd: number,
+): { totalUsd: number | null; note: string | null } {
+	if (solUsd === null || !Number.isFinite(solUsd) || solUsd <= 0) return { totalUsd: null, note: NO_RATE_NOTE };
+	return { totalUsd: pumpRealizedSol * solUsd + krakenRealizedUsd, note: null };
+}
+
 export interface BarOptions {
 	polarity?: boolean;
 	horizontal?: boolean;

@@ -1075,6 +1075,39 @@ html[data-tier="fever"] .logo {
 	grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
 	gap: 10px;
 }
+.charts.single {
+	grid-template-columns: minmax(0, 1fr);
+}
+.charts.single .chart-body {
+	height: 260px;
+}
+.verdict-pair {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+	gap: 8px;
+}
+.note {
+	margin: 0;
+	color: var(--dim);
+	font-size: 16px;
+}
+.legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 14px;
+	font-size: 16px;
+	color: var(--text);
+}
+.legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.swatch {
+	width: 12px;
+	height: 3px;
+	border-radius: 2px;
+}
 .chart {
 	display: grid;
 	gap: 6px;
