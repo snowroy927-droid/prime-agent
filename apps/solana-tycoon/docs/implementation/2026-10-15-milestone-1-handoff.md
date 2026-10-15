@@ -115,5 +115,7 @@ These come from the final review. They are not fixed in Milestone 1.
 - Owner: run `npm install && npm run demo` in `apps/solana-tycoon/`, then `npm start` with `RPC_URL` set, for the
   first real-network paper run.
 - Engineering: the Kraken desk. It paper-trades at real Kraken prices, scans every Kraken USD pair for movers, and adds
-  a combined pump.fun and Kraken analytics terminal. The design is in `docs/specs/2026-10-15-kraken-desk-design.md`,
-  awaiting the owner's review. Milestone 2, live signing for pump.fun, follows it.
+  a combined pump.fun and Kraken analytics terminal. The owner approved the design
+  (`docs/specs/2026-10-15-kraken-desk-design.md`) and its plan (`docs/implementation/2026-10-15-kraken-desk-plan.md`)
+  on 2026-10-15; it is built on this branch after this hand-off, and the README's "Kraken desk" section documents it.
+  Milestone 2, live signing for pump.fun, follows it.

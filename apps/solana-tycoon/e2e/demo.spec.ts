@@ -78,7 +78,39 @@ test("the demo shows the badge, a rendered office, and a rejected rug", async ({
 	expect(await pixelVariance(page, await canvas.screenshot())).toBeGreaterThan(0);
 });
 
-test("screenshots at desktop and phone sizes", async ({ page }) => {
+test("pressing D switches to the Kraken desk: movers radar, USD balance, and INKY", async ({ page }) => {
+	await page.goto("/");
+	await expect(page.locator(".badge").first()).toHaveText("SYNTHETIC DEMO");
+	await expect(page.locator(".cast-tag").filter({ hasText: "INKY" })).toHaveCount(1);
+	await page.keyboard.press("d");
+	await expect(page.locator("html")).toHaveAttribute("data-desk", "kraken");
+	await expect(page.locator("#radar h2")).toContainText("KRAKEN MOVERS");
+	await expect(page.locator("#radar li.row").first()).toBeVisible({ timeout: 10_000 });
+	await expect(page.locator(".badge-kraken")).toBeVisible();
+	const balance = page.locator(".chip").filter({ hasText: "BALANCE" }).locator(".v");
+	await expect(balance).toHaveText(/^\$[\d,]+\.\d{2}$/);
+});
+
+test("the KRAKEN and COMBINED analytics tabs show verdicts, drawn charts, and the Kraken closes", async ({ page }) => {
+	await page.goto("/");
+	await expect(page.locator(".badge").first()).toHaveText("SYNTHETIC DEMO");
+	await page.getByRole("button", { name: "ANALYTICS" }).click();
+	for (const tab of ["KRAKEN", "COMBINED"]) {
+		await page.getByRole("tab", { name: tab, exact: true }).click();
+		await expect(page.locator(".verdict-box").filter({ hasText: "KRAKEN VERDICT" })).toBeVisible();
+		const canvas = page.locator(".chart canvas").first();
+		await expect(canvas).toBeVisible();
+		await page.waitForTimeout(500);
+		expect(await pixelVariance(page, await canvas.screenshot()), `${tab} chart is blank`).toBeGreaterThan(0);
+	}
+	await expect(page.locator(".legend")).toContainText("PUMP.FUN");
+	await expect(page.locator(".legend")).toContainText("KRAKEN");
+	await page.getByRole("tab", { name: "KRAKEN", exact: true }).click();
+	await page.getByRole("tab", { name: "TABLE" }).click();
+	await expect(page.locator("table.trades")).toContainText("MOONCAT", { timeout: 60_000 });
+});
+
+test("screenshots of both desks at desktop and phone sizes", async ({ page }) => {
 	mkdirSync(SHOTS, { recursive: true });
 	for (const [name, width, height] of [
 		["desktop", 1440, 900],
@@ -88,9 +120,15 @@ test("screenshots at desktop and phone sizes", async ({ page }) => {
 		await page.goto("/");
 		await expect(page.locator(".badge").first()).toHaveText("SYNTHETIC DEMO");
 		await page.waitForTimeout(2_000);
-		const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
-		expect(overflow, `${name} scrolls sideways`).toBe(false);
-		await page.screenshot({ path: `${SHOTS}/${name}-${width}x${height}.png` });
+		for (const desk of ["pump", "kraken"] as const) {
+			if (desk === "kraken") await page.keyboard.press("d");
+			await expect(page.locator("html")).toHaveAttribute("data-desk", desk);
+			await page.waitForTimeout(500);
+			const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+			expect(overflow, `${name} ${desk} desk scrolls sideways`).toBe(false);
+			await page.screenshot({ path: `${SHOTS}/${name}-${desk}-${width}x${height}.png` });
+		}
+		await page.keyboard.press("d");
 	}
 });
 
