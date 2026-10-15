@@ -1,6 +1,6 @@
 import { mulberry32 } from "../../shared/prng";
 
-export type SfxId = "launch" | "approve" | "reject" | "fill" | "combo" | "loss" | "fever";
+export type SfxId = "launch" | "approve" | "reject" | "fill" | "combo" | "loss" | "fever" | "chime";
 
 type AudioContextConstructor = typeof AudioContext;
 
@@ -56,6 +56,11 @@ export class Sfx {
 				break;
 			case "fever":
 				this.arpeggio([523, 659, 784, 1047, 1319, 1568], 1.2, 0.08, 0.04, 0.05);
+				break;
+			case "chime":
+				// Kraken fills: a soft two-bell triangle chime, so they sound unlike pump.fun's square blip.
+				this.tone(1568, 0.35, "triangle", 0.06);
+				this.tone(2093, 0.45, "triangle", 0.05, 0.09);
 				break;
 		}
 	}

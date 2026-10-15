@@ -4,7 +4,8 @@ import { DEFAULT_SETTINGS } from "../src/shared/settings";
 import { computeLaunchStats, computeStats } from "../src/shared/stats";
 import type { CheckResult, ClosedTrade, OrderUpdate, Position } from "../src/shared/types";
 import { ceoMood, type Reaction, reactionsFor } from "../src/web/scene/director";
-import { type GameState, initialGameState, reduce } from "../src/web/state/store";
+import { type GameState, initialGameState, reduce, withDesk } from "../src/web/state/store";
+import { krakenSnapshot, krakenTrade } from "./helpers/krakenFixtures";
 import { closed } from "./helpers/trades";
 
 const NOW = 5_000_000;
@@ -182,6 +183,78 @@ describe("reactionsFor", () => {
 		expect(step(stateWith(wins(3)), { type: "close", trade: closed(-2_000_000n, NOW + 1) })).toEqual([
 			{ cast: "gloop", state: "sweat", ms: 2500 },
 			{ sfx: "loss" },
+		]);
+	});
+});
+
+describe("INKY reactions", () => {
+	const krakenState = (closes = [krakenTrade(1n, NOW - 5_000)]): GameState =>
+		reduce(
+			{ ...initialGameState(), now: NOW },
+			{ type: "snapshot", snapshot: { ...snapshot(), kraken: krakenSnapshot({ closes }) } },
+		);
+	const krakenOrder = (status: "pending" | "filled" | "failed", error?: string) => ({
+		type: "kraken_order" as const,
+		order: {
+			id: "ko1",
+			positionId: "kp1",
+			pair: "MOONUSD",
+			symbol: "MOON",
+			side: "buy" as const,
+			status,
+			source: "auto" as const,
+			at: NOW,
+			...(error ? { error } : {}),
+		},
+	});
+
+	it("puts INKY to work on a pending order, then celebrates the fill with a chime", () => {
+		const pending = krakenState();
+		expect(step(pending, krakenOrder("pending"))).toEqual([{ cast: "inky", state: "work", ms: 0 }]);
+		const working = reduce(pending, krakenOrder("pending"));
+		expect(step(working, krakenOrder("filled"))).toEqual([
+			{ cast: "inky", state: "idle", ms: 0 },
+			{ cast: "inky", state: "celebrate", ms: 1500 },
+			{ sfx: "chime" },
+		]);
+		expect(step(working, krakenOrder("failed", "No price for MOON"))).toEqual([
+			{ cast: "inky", state: "idle", ms: 0 },
+			{ cast: "inky", state: "fail", ms: 2000, bubble: "No price for MOON" },
+		]);
+	});
+
+	it("celebrates a Kraken win with a USD bubble and coins at INKY's desk, with no pump.fun banner", () => {
+		const reactions = step(krakenState(), { type: "kraken_close", trade: krakenTrade(3_650_000n, NOW + 1) });
+		expect(reactions).toEqual([
+			{ cast: "inky", state: "celebrate", ms: 2000, bubble: "+$3.65" },
+			{ effect: "coins", count: 20, at: "inky" },
+		]);
+	});
+
+	it("shows the Kraken combo banner only while the Kraken desk is selected", () => {
+		const selected = withDesk(krakenState(), "kraken");
+		const reactions = step(selected, { type: "kraken_close", trade: krakenTrade(3_650_000n, NOW + 1) });
+		expect(reactions).toContainEqual({ effect: "banner", text: "COMBO x2" });
+		expect(reactions).toContainEqual({ sfx: "combo" });
+	});
+
+	it("makes INKY fail with the loss sound on a Kraken loss", () => {
+		expect(step(krakenState(), { type: "kraken_close", trade: krakenTrade(-1_750_000n, NOW + 1) })).toEqual([
+			{ cast: "inky", state: "fail", ms: 2500 },
+			{ sfx: "loss" },
+		]);
+	});
+
+	it("puts INKY to sleep while the Kraken feed is down or the desk is offline", () => {
+		const state = krakenState();
+		expect(step(state, { type: "kraken_feed", status: "down", dropped: 0, reconnectAt: NOW + 5_000 })).toEqual([
+			{ cast: "inky", state: "sleep", ms: 0 },
+		]);
+		expect(step(state, { type: "kraken_feed", status: "live", dropped: 0, reconnectAt: null })).toEqual([
+			{ cast: "inky", state: "idle", ms: 0 },
+		]);
+		expect(step(state, { type: "kraken_offline", error: "fetch failed" })).toEqual([
+			{ cast: "inky", state: "sleep", ms: 0, bubble: "OFFLINE" },
 		]);
 	});
 });

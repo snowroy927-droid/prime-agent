@@ -23,13 +23,14 @@ import { PixelRenderer } from "./renderer";
 const CAMERA_TARGET = new Vector3(-1.4, 1.7, 0.2);
 // Isometric-style view from the room's open corner.
 const CAMERA_DIRECTION = new Vector3(1, 0.86, 1).normalize();
-const CAST_IDS: readonly CastId[] = ["zorp", "vera", "rex", "gloop", "ceo"];
+const CAST_IDS: readonly CastId[] = ["zorp", "vera", "rex", "gloop", "ceo", "inky"];
 const TAGS: Record<CastId, { name: string; role: string }> = {
 	zorp: { name: "ZORP", role: "SCOUT" },
 	vera: { name: "VERA", role: "ANALYST" },
 	rex: { name: "REX", role: "TRADER" },
 	gloop: { name: "GLOOP", role: "CFO" },
 	ceo: { name: "YOU", role: "CEO" },
+	inky: { name: "INKY", role: "KRAKEN" },
 };
 
 function fitCamera(camera: OrthographicCamera, aspect: number): void {
@@ -126,8 +127,10 @@ export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 					cast[reaction.cast].setState(reaction.state, reaction.ms);
 					if (reaction.bubble) cast[reaction.cast].setBubble(reaction.bubble, Math.max(reaction.ms, 2_000));
 				} else if ("effect" in reaction) {
-					if (reaction.effect === "coins") effects.burst("coins", reaction.count, office.anchors.gloop);
-					else if (reaction.effect === "confetti") effects.burst("confetti", reaction.count, office.anchors.ceo);
+					if (reaction.effect === "coins")
+						effects.burst("coins", reaction.count, office.anchors[reaction.at ?? "gloop"]);
+					else if (reaction.effect === "confetti")
+						effects.burst("confetti", reaction.count, office.anchors[reaction.at ?? "ceo"]);
 					else if (reaction.effect === "shake") effects.shake(reaction.px, reaction.ms, performance.now());
 				}
 			}
@@ -208,6 +211,12 @@ export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 			cast.rex.setState(Object.values(state.orders).some((order) => order.status === "pending") ? "work" : "idle");
 			cast.gloop.setState("work");
 			cast.ceo.setState(ceoMood(state));
+			const kraken = state.snapshot?.kraken ?? null;
+			const krakenBusy = Object.values(state.kraken.orders).some((order) => order.status === "pending");
+			cast.inky.setState(
+				!kraken || kraken.error || kraken.feed.status !== "live" ? "sleep" : krakenBusy ? "work" : "idle",
+			);
+			if (kraken?.error) cast.inky.setBubble("OFFLINE", 1_000);
 			for (const character of [...Object.values(cast), intern]) {
 				character.setMotion(motion);
 				character.update(dt);
@@ -218,6 +227,7 @@ export function SceneView({ store, reducedMotion, onOpenAnalytics }: Props) {
 			renderer.setReducedMotion(!motion);
 			renderer.setShake(effects.shakeAmount(now));
 			office.setUpgrades(state.upgrades);
+			office.setTrophies(state.kraken.trophies);
 			monitors.update(state, now);
 			renderer.render(scene, camera, now);
 			placeLabels();

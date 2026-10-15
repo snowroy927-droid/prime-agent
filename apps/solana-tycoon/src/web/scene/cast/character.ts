@@ -15,7 +15,7 @@ const PIVOTS: Record<Limb, [number, number, number]> = {
 	head: [0, 1.55, 0],
 };
 
-const PROP_PARENT: Partial<Record<CastId, Limb>> = { zorp: "head", vera: "armR" };
+const PROP_PARENT: Partial<Record<CastId, Limb>> = { zorp: "head", vera: "armR", inky: "head" };
 
 export interface CharacterOptions {
 	scale?: number;

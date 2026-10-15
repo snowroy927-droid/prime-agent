@@ -1,14 +1,15 @@
 import type { EngineEvent } from "../../shared/protocol";
 import { solToLamports } from "../../shared/units";
 import type { SfxId } from "../audio/sfx";
-import { type GameState, sessionLamports } from "../state/store";
+import { usdSigned } from "../hud/format";
+import { activeDesk, type GameState, sessionLamports } from "../state/store";
 import type { CastId } from "./office";
 
 export type CharacterState = "idle" | "work" | "celebrate" | "alarm" | "sleep" | "fail" | "dance" | "sweat";
 
 export type Reaction =
 	| { cast: CastId; state: CharacterState; ms: number; bubble?: string }
-	| { effect: "coins" | "confetti"; count: number }
+	| { effect: "coins" | "confetti"; count: number; at?: CastId }
 	| { effect: "shake"; px: number; ms: number }
 	| { effect: "banner"; text: string }
 	| { sfx: SfxId };
@@ -63,6 +64,33 @@ export function reactionsFor(_prev: GameState, next: GameState, event: EngineEve
 			}
 			return reactions;
 		}
+		case "kraken_order": {
+			if (event.order.status === "pending") return [{ cast: "inky", state: "work", ms: 0 }];
+			const stillPending = Object.values(next.kraken.orders).some((order) => order.status === "pending");
+			const base: Reaction = { cast: "inky", state: stillPending ? "work" : "idle", ms: 0 };
+			if (event.order.status === "filled")
+				return [base, { cast: "inky", state: "celebrate", ms: 1500 }, { sfx: "chime" }];
+			return [base, { cast: "inky", state: "fail", ms: 2000, bubble: event.order.error ?? "Order failed" }];
+		}
+		case "kraken_close": {
+			if (BigInt(event.trade.pnlUsdMicros) <= 0n)
+				return [{ cast: "inky", state: "fail", ms: 2500 }, { sfx: "loss" }];
+			const reactions: Reaction[] = [
+				{ cast: "inky", state: "celebrate", ms: 2000, bubble: usdSigned(event.trade.pnlUsdMicros) },
+				{ effect: "coins", count: 20, at: "inky" },
+			];
+			// The banner belongs to the selected desk's streak, like the screen tier.
+			if (activeDesk(next) === "kraken" && next.kraken.combo >= 2) {
+				reactions.push({ effect: "banner", text: `COMBO x${next.kraken.combo}` }, { sfx: "combo" });
+			}
+			return reactions;
+		}
+		case "kraken_feed":
+			if (event.status === "down") return [{ cast: "inky", state: "sleep", ms: 0 }];
+			if (event.status === "live") return [{ cast: "inky", state: "idle", ms: 0 }];
+			return [];
+		case "kraken_offline":
+			return [{ cast: "inky", state: "sleep", ms: 0, bubble: "OFFLINE" }];
 		default:
 			return [];
 	}

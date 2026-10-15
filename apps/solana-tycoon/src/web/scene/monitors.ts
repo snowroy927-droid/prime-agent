@@ -88,6 +88,8 @@ export class MonitorTextures {
 			cfo: surface(48, 36),
 			ceo: surface(48, 36),
 			wall: surface(160, 80),
+			inky: surface(48, 36),
+			ticker: surface(128, 52),
 		};
 		this.textures = Object.fromEntries(Object.entries(this.surfaces).map(([id, s]) => [id, s.texture])) as Record<
 			ScreenId,
@@ -163,6 +165,38 @@ export class MonitorTextures {
 		);
 		const realized = snapshot?.stats.realized ?? 0;
 		text(wall.ctx, `${realized >= 0 ? "+" : ""}${realized.toFixed(3)}`, 98, 67, realized >= 0 ? GOOD : BAD);
+
+		const kraken = snapshot?.kraken ?? null;
+		const movers = kraken?.movers.slice(0, 5) ?? [];
+		const inky = this.surfaces.inky;
+		clear(inky);
+		if (!kraken || kraken.error || kraken.feed.status !== "live") {
+			text(inky.ctx, "ZZ", 14, 12, DIM);
+		} else {
+			inky.ctx.fillStyle = DIM;
+			inky.ctx.fillRect(23, 2, 1, 32);
+			movers.forEach((mover, i) => {
+				const change = mover.change15m ?? 0;
+				const width = Math.max(1, Math.min(20, Math.abs(change) * 2));
+				inky.ctx.fillStyle = mover.status === "eligible" ? GOOD : change >= 0 ? BASE_PALETTE[14] : BAD;
+				inky.ctx.fillRect(change >= 0 ? 24 : 24 - width, 3 + i * 6, width, 4);
+			});
+		}
+
+		const ticker = this.surfaces.ticker;
+		clear(ticker);
+		if (kraken?.error) {
+			text(ticker.ctx, "KRAKEN OFFLINE", 8, 20, BAD);
+		} else if (movers.length === 0) {
+			text(ticker.ctx, "KRAKEN", 40, 20, DIM);
+		} else {
+			movers.forEach((mover, i) => {
+				const change = mover.change15m;
+				const label = change === null ? "--" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+				text(ticker.ctx, mover.symbol.slice(0, 6), 3, 2 + i * 10, BASE_PALETTE[5]);
+				text(ticker.ctx, label, 125 - label.length * 8, 2 + i * 10, change !== null && change < 0 ? BAD : GOOD);
+			});
+		}
 
 		for (const s of Object.values(this.surfaces)) s.texture.needsUpdate = true;
 	}

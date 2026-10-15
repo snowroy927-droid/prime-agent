@@ -9,12 +9,12 @@ import {
 	PlaneGeometry,
 	Vector3,
 } from "three";
-import type { UpgradeId } from "../../shared/progression";
+import { KRAKEN_TROPHIES, type KrakenTrophyId, type UpgradeId } from "../../shared/progression";
 import { BASE_PALETTE } from "./palettes";
 import { buildVoxelMesh, type Voxel } from "./voxel";
 
-export type CastId = "zorp" | "vera" | "rex" | "gloop" | "ceo";
-export type ScreenId = "scout" | "analyst" | "trader" | "cfo" | "ceo" | "wall";
+export type CastId = "zorp" | "vera" | "rex" | "gloop" | "ceo" | "inky";
+export type ScreenId = "scout" | "analyst" | "trader" | "cfo" | "ceo" | "wall" | "inky" | "ticker";
 
 export interface Office {
 	root: Group;
@@ -22,6 +22,7 @@ export interface Office {
 	screens: Record<ScreenId, Mesh<PlaneGeometry, MeshBasicMaterial>>;
 	intern: { group: Group; anchor: Vector3 };
 	setUpgrades(ids: readonly UpgradeId[]): void;
+	setTrophies(ids: readonly KrakenTrophyId[]): void;
 }
 
 // Desks sit in one screen-horizontal row: d moves along the row, row moves toward the camera.
@@ -34,7 +35,20 @@ const STATIONS: Record<CastId, { x: number; z: number; screen: ScreenId }> = {
 	rex: { ...along(0), screen: "trader" },
 	gloop: { ...along(6), screen: "cfo" },
 	ceo: { ...along(3, 6), screen: "ceo" },
+	// INKY's Kraken desk takes the open floor on the right, clear of every other tag at phone width.
+	inky: { ...along(10, 3), screen: "inky" },
 };
+
+// Bronze, silver, and gold cups on INKY's desk.
+const CUP_COLORS: Record<KrakenTrophyId, number> = { inky_bronze: 7, inky_silver: 4, inky_gold: 13 };
+
+function cup(x: number, color: number): Voxel[] {
+	return [
+		[x, 1.62, -0.45, 0.22, 0.12, 0.22, color],
+		[x, 1.74, -0.45, 0.08, 0.14, 0.08, color],
+		[x, 1.88, -0.45, 0.28, 0.22, 0.24, color],
+	];
+}
 
 // Characters stand behind their desk, offset in the desk's rotated frame.
 function standBehind(x: number, z: number, lateral: number, back: number): Vector3 {
@@ -121,6 +135,13 @@ export function buildOffice(): Office {
 	smallWindow.add(starWindow);
 	root.add(smallWindow);
 
+	// INKY's wall ticker of the top movers, above where the gold vault appears.
+	root.add(buildVoxelMesh([[5.2, 4.55, -6.95, 4.6, 2.1, 0.4, 0]]));
+	screens.ticker = plane(4.3, 1.75, new MeshBasicMaterial());
+	screens.ticker.position.set(5.2, 5.6, -6.62);
+	root.add(screens.ticker);
+
+	const cups = {} as Record<KrakenTrophyId, Mesh>;
 	const anchors = {} as Record<CastId, Vector3>;
 	for (const [id, station] of Object.entries(STATIONS) as [CastId, (typeof STATIONS)[CastId]][]) {
 		const group = new Group();
@@ -132,6 +153,15 @@ export function buildOffice(): Office {
 		screen.position.set(-0.55, 2.13, 0.26);
 		group.add(screen);
 		screens[station.screen] = screen;
+		if (id === "inky") {
+			group.add(buildVoxelMesh([[0.85, 1.5, -0.45, 1.2, 0.12, 0.5, 7]]));
+			KRAKEN_TROPHIES.forEach((trophy, i) => {
+				const mesh = buildVoxelMesh(cup(0.45 + i * 0.4, CUP_COLORS[trophy.id]));
+				mesh.visible = false;
+				group.add(mesh);
+				cups[trophy.id] = mesh;
+			});
+		}
 		root.add(group);
 		anchors[id] = standBehind(station.x, station.z, big ? 1.2 : 0.85, 1.55);
 	}
@@ -235,6 +265,10 @@ export function buildOffice(): Office {
 			const unlocked = new Set(ids);
 			for (const id of Object.keys(props) as UpgradeId[]) props[id].visible = unlocked.has(id);
 			smallWindow.visible = !unlocked.has("space_window");
+		},
+		setTrophies(ids) {
+			const unlocked = new Set(ids);
+			for (const id of Object.keys(cups) as KrakenTrophyId[]) cups[id].visible = unlocked.has(id);
 		},
 	};
 }
