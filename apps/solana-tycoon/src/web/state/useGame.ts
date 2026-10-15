@@ -8,7 +8,7 @@ import { type ConnectionStatus, type GameState, initialGameState, reduce, tick }
 export class GameStore {
 	private state: GameState = tick(initialGameState(), Date.now());
 	private readonly listeners = new Set<() => void>();
-	private readonly eventListeners = new Set<(event: EngineEvent, state: GameState) => void>();
+	private readonly eventListeners = new Set<(event: EngineEvent, next: GameState, prev: GameState) => void>();
 	private frame: number | null = null;
 
 	getState = (): GameState => this.state;
@@ -20,7 +20,7 @@ export class GameStore {
 		};
 	};
 
-	onEvent(listener: (event: EngineEvent, state: GameState) => void): () => void {
+	onEvent(listener: (event: EngineEvent, next: GameState, prev: GameState) => void): () => void {
 		this.eventListeners.add(listener);
 		return () => {
 			this.eventListeners.delete(listener);
@@ -28,8 +28,9 @@ export class GameStore {
 	}
 
 	dispatch(event: EngineEvent): void {
-		this.state = reduce(this.state, event);
-		for (const listener of [...this.eventListeners]) listener(event, this.state);
+		const prev = this.state;
+		this.state = reduce(prev, event);
+		for (const listener of [...this.eventListeners]) listener(event, this.state, prev);
 		this.schedule();
 	}
 

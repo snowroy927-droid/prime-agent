@@ -1,14 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { AmbientLight, Color, DirectionalLight, type Mesh, OrthographicCamera, Scene, Vector3 } from "three";
 import type { GameStore } from "../state/useGame";
+import { Character } from "./cast/character";
+import { ceoMood, reactionsFor } from "./director";
+import { Effects } from "./effects";
 import { MonitorTextures } from "./monitors";
-import { buildOffice, type ScreenId } from "./office";
+import { buildOffice, type CastId, type ScreenId } from "./office";
 import { BASE_PALETTE } from "./palettes";
 import { PixelRenderer } from "./renderer";
 
 const CAMERA_TARGET = new Vector3(-1.4, 1.7, 0.2);
 // Isometric-style view from the room's open corner.
 const CAMERA_DIRECTION = new Vector3(1, 0.86, 1).normalize();
+const CAST_IDS: readonly CastId[] = ["zorp", "vera", "rex", "gloop", "ceo"];
+const TAGS: Record<CastId, string> = {
+	zorp: "ZORP SCOUT",
+	vera: "VERA ANALYST",
+	rex: "REX TRADER",
+	gloop: "GLOOP CFO",
+	ceo: "YOU CEO",
+};
 
 function fitCamera(camera: OrthographicCamera, aspect: number): void {
 	const viewWidth = Math.max(14.5 * aspect, 25);
@@ -27,6 +38,7 @@ interface Props {
 
 export function SceneView({ store, reducedMotion }: Props) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const overlayRef = useRef<HTMLDivElement | null>(null);
 	const reducedRef = useRef(reducedMotion);
 	const [failure, setFailure] = useState<string | null>(null);
 
@@ -36,7 +48,8 @@ export function SceneView({ store, reducedMotion }: Props) {
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
-		if (!canvas) return;
+		const overlay = overlayRef.current;
+		if (!canvas || !overlay) return;
 		let renderer: PixelRenderer;
 		try {
 			renderer = new PixelRenderer(canvas);
@@ -61,6 +74,46 @@ export function SceneView({ store, reducedMotion }: Props) {
 			material.needsUpdate = true;
 		}
 
+		const cast = {} as Record<CastId, Character>;
+		for (const id of CAST_IDS) {
+			const character = new Character(id);
+			character.place(office.anchors[id]);
+			office.root.add(character.root);
+			cast[id] = character;
+		}
+		const intern = new Character("zorp", { scale: 0.75, recolor: { 10: 14, 1: 2, 14: 5 } });
+		intern.place(office.intern.anchor);
+		intern.setState("work");
+		office.intern.group.add(intern.root);
+
+		const effects = new Effects();
+		scene.add(effects.mesh);
+
+		const labels = {} as Record<CastId, { tag: HTMLDivElement; bubble: HTMLDivElement }>;
+		for (const id of CAST_IDS) {
+			const tag = document.createElement("div");
+			tag.className = "cast-tag";
+			tag.textContent = TAGS[id];
+			const bubble = document.createElement("div");
+			bubble.className = "bubble";
+			bubble.hidden = true;
+			overlay.append(tag, bubble);
+			labels[id] = { tag, bubble };
+		}
+
+		const offEvents = store.onEvent((event, next, prev) => {
+			for (const reaction of reactionsFor(prev, next, event)) {
+				if ("cast" in reaction) {
+					cast[reaction.cast].setState(reaction.state, reaction.ms);
+					if (reaction.bubble) cast[reaction.cast].setBubble(reaction.bubble, Math.max(reaction.ms, 2_000));
+				} else if ("effect" in reaction) {
+					if (reaction.effect === "coins") effects.burst("coins", reaction.count, office.anchors.gloop);
+					else if (reaction.effect === "confetti") effects.burst("confetti", reaction.count, office.anchors.ceo);
+					else if (reaction.effect === "shake") effects.shake(reaction.px, reaction.ms, performance.now());
+				}
+			}
+		});
+
 		const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
 		camera.position.copy(CAMERA_TARGET).addScaledVector(CAMERA_DIRECTION, 80);
 		camera.lookAt(CAMERA_TARGET);
@@ -73,22 +126,67 @@ export function SceneView({ store, reducedMotion }: Props) {
 		const observer = new ResizeObserver(resize);
 		if (canvas.parentElement) observer.observe(canvas.parentElement);
 
+		const projected = new Vector3();
+		const placeLabels = () => {
+			const width = canvas.clientWidth;
+			const height = canvas.clientHeight;
+			for (const id of CAST_IDS) {
+				const character = cast[id];
+				const { tag, bubble } = labels[id];
+				character.root.getWorldPosition(projected).project(camera);
+				tag.style.left = `${((projected.x + 1) / 2) * width}px`;
+				tag.style.top = `${((1 - projected.y) / 2) * height + 4}px`;
+				const said = character.currentBubble();
+				if (!said) {
+					bubble.hidden = true;
+					continue;
+				}
+				character.headPosition(projected);
+				projected.y += 1.9;
+				projected.project(camera);
+				bubble.hidden = false;
+				bubble.textContent = said.text;
+				bubble.className = `bubble ${said.tone}`;
+				bubble.style.left = `${((projected.x + 1) / 2) * width}px`;
+				bubble.style.top = `${((1 - projected.y) / 2) * height}px`;
+			}
+		};
+
 		let frame = 0;
+		let last = performance.now();
 		const draw = (now: number) => {
 			frame = requestAnimationFrame(draw);
+			const dt = Math.min(100, now - last);
+			last = now;
 			if (document.hidden) return;
 			const state = store.getState();
+			const motion = !reducedRef.current;
+			// Resting states follow live state so they are right after a reconnect too.
+			cast.zorp.setState(state.snapshot && state.snapshot.feed.status !== "live" ? "sleep" : "idle");
+			cast.rex.setState(Object.values(state.orders).some((order) => order.status === "pending") ? "work" : "idle");
+			cast.gloop.setState("work");
+			cast.ceo.setState(ceoMood(state));
+			for (const character of [...Object.values(cast), intern]) {
+				character.setMotion(motion);
+				character.update(dt);
+			}
+			effects.setMotion(motion);
+			effects.update(dt);
 			renderer.setTier(state.tier);
-			renderer.setReducedMotion(reducedRef.current);
+			renderer.setReducedMotion(!motion);
+			renderer.setShake(effects.shakeAmount(now));
 			office.setUpgrades(state.upgrades);
 			monitors.update(state, now);
 			renderer.render(scene, camera, now);
+			placeLabels();
 		};
 		frame = requestAnimationFrame(draw);
 
 		return () => {
 			cancelAnimationFrame(frame);
+			offEvents();
 			observer.disconnect();
+			overlay.replaceChildren();
 			monitors.dispose();
 			scene.traverse((object) => {
 				const mesh = object as Mesh;
@@ -106,6 +204,7 @@ export function SceneView({ store, reducedMotion }: Props) {
 				role="img"
 				aria-label="Pixel office where the crew reacts to trades"
 			/>
+			<div ref={overlayRef} className="scene-overlay" aria-hidden="true" />
 			{failure ? <div className="scene-fallback">3D view unavailable: {failure}. The HUD keeps working.</div> : null}
 		</>
 	);

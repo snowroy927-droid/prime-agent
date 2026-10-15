@@ -157,6 +157,19 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 	}
 }
 
+// Realized since this page connected, plus open positions at their current value.
+export function sessionLamports(state: GameState): bigint {
+	const snapshot = state.snapshot;
+	if (!snapshot || state.sessionStart === null) return 0n;
+	let total = 0n;
+	for (const trade of snapshot.closes) if (trade.closedAt >= state.sessionStart) total += BigInt(trade.pnlLamports);
+	for (const position of snapshot.positions) {
+		if (position.valueLamports === null) continue;
+		total += BigInt(position.valueLamports) + BigInt(position.proceedsLamports) - BigInt(position.costLamports);
+	}
+	return total;
+}
+
 export function tick(state: GameState, now: number): GameState {
 	const closes = state.snapshot?.closes ?? [];
 	return { ...state, now, tier: activeTier(closes, now) };

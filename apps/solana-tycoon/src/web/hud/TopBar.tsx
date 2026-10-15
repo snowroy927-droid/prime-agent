@@ -1,4 +1,4 @@
-import type { GameState } from "../state/store";
+import { type GameState, sessionLamports } from "../state/store";
 import { age, clockTime, solAmount, solSigned } from "./format";
 import { HoldButton } from "./HoldButton";
 import type { HoldController } from "./useHold";
@@ -12,18 +12,6 @@ interface Props {
 	onMute: () => void;
 	onSettings: () => void;
 	onKill: () => void;
-}
-
-function sessionLamports(state: GameState): bigint {
-	const snapshot = state.snapshot;
-	if (!snapshot || state.sessionStart === null) return 0n;
-	let total = 0n;
-	for (const trade of snapshot.closes) if (trade.closedAt >= state.sessionStart) total += BigInt(trade.pnlLamports);
-	for (const position of snapshot.positions) {
-		if (position.valueLamports === null) continue;
-		total += BigInt(position.valueLamports) + BigInt(position.proceedsLamports) - BigInt(position.costLamports);
-	}
-	return total;
 }
 
 function Pips({ on, total, bad }: { on: number; total: number; bad?: boolean }) {

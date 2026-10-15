@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Ack, CommandInput } from "../shared/protocol";
+import { Sfx } from "./audio/sfx";
 import type { HudActions } from "./hud/actions";
 import { Banner } from "./hud/Banner";
 import { EventLog } from "./hud/EventLog";
@@ -11,6 +12,7 @@ import { Radar } from "./hud/Radar";
 import { SettingsPanel } from "./hud/SettingsPanel";
 import { TopBar } from "./hud/TopBar";
 import { useHold } from "./hud/useHold";
+import { reactionsFor } from "./scene/director";
 import { hudColors } from "./scene/palettes";
 import { SceneView } from "./scene/SceneView";
 import { useGame } from "./state/useGame";
@@ -68,6 +70,28 @@ export function App() {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [tab, setTab] = useState<"radar" | "desk">("radar");
 	const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+	const [banner, setBanner] = useState<{ id: number; text: string } | null>(null);
+	const sfx = useMemo(() => new Sfx(), []);
+
+	useEffect(() => sfx.setMuted(muted), [sfx, muted]);
+	useEffect(
+		() =>
+			store.onEvent((event, next, prev) => {
+				for (const reaction of reactionsFor(prev, next, event)) {
+					if ("sfx" in reaction) sfx.play(reaction.sfx);
+					else if ("effect" in reaction && reaction.effect === "banner") {
+						const text = reaction.text;
+						setBanner((current) => ({ id: (current?.id ?? 0) + 1, text }));
+					}
+				}
+			}),
+		[store, sfx],
+	);
+	useEffect(() => {
+		if (!banner) return;
+		const timer = setTimeout(() => setBanner(null), 1_700);
+		return () => clearTimeout(timer);
+	}, [banner]);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -205,7 +229,7 @@ export function App() {
 				<section className="center" aria-label="Office">
 					<div className="scene-wrap" data-scene="true">
 						<SceneView store={store} reducedMotion={reducedMotion} />
-						<Banner combo={state.combo} tier={state.tier} />
+						<Banner banner={banner} tier={state.tier} />
 						<Offline connection={state.connection} retryAt={() => game.client.retryAt()} />
 					</div>
 					<div className="tabs" role="tablist" aria-label="Panels">
