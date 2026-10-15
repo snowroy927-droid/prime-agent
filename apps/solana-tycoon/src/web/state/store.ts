@@ -59,6 +59,8 @@ function symbolOf(snapshot: EngineSnapshot, mint: string): string {
 	return snapshot.launches.find((entry) => entry.launch.mint === mint)?.launch.symbol ?? mint.slice(0, 4);
 }
 
+const magnitude = (count: number): number => (count <= 0 ? -1 : Math.floor(Math.log10(count)));
+
 export function reduce(state: GameState, event: EngineEvent): GameState {
 	if (event.type === "hello") {
 		if (event.protocolVersion === PROTOCOL_VERSION) return state;
@@ -71,11 +73,7 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 	if (event.type === "snapshot") {
 		const snapshot = event.snapshot;
 		const now = Math.max(state.now, snapshot.serverTime);
-		return withDerived(
-			{ ...state, snapshot, sessionStart: state.sessionStart ?? snapshot.serverTime },
-			snapshot.closes,
-			now,
-		);
+		return withDerived({ ...state, snapshot, sessionStart: snapshot.startedAt }, snapshot.closes, now);
 	}
 	if (event.type === "log") return addLog(state, event.line);
 	const snapshot = state.snapshot;
@@ -146,10 +144,12 @@ export function reduce(state: GameState, event: EngineEvent): GameState {
 					feed: { status: event.status, dropped: event.dropped, reconnectAt: event.reconnectAt },
 				},
 			};
-			if (event.dropped <= snapshot.feed.dropped) return next;
+			// One line each time the count reaches a new power of ten, so a format change cannot flood the log.
+			if (magnitude(event.dropped) <= magnitude(snapshot.feed.dropped)) return next;
+			const noun = event.dropped === 1 ? "message" : "messages";
 			return addLog(next, {
 				level: "warn",
-				message: `Feed: ${event.dropped} messages dropped without a valid mint (raw samples in data/fixtures/)`,
+				message: `Feed: ${event.dropped} ${noun} dropped without a valid mint (raw samples in data/fixtures/)`,
 				at: state.now,
 			});
 		}

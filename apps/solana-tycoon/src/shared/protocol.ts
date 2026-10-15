@@ -199,6 +199,8 @@ export const EngineSnapshotSchema = z.object({
 	serverTime: z.number(),
 	// Engine milliseconds per wall-clock millisecond: the replay speed in demo and replay, otherwise 1.
 	clockRate: z.number().positive(),
+	// When this engine process started, on the engine clock; session PnL counts from here.
+	startedAt: z.number(),
 });
 
 export const EngineEventSchema = z.discriminatedUnion("type", [

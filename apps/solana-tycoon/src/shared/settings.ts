@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const HARD_LIMITS = { buySolMax: 1, maxPositionsMax: 10 } as const;
+// pinsMax matches the six hotbar slots.
+export const HARD_LIMITS = { buySolMax: 1, maxPositionsMax: 10, pinsMax: 6 } as const;
 
 const RugSettingsSchema = z.strictObject({
 	blocklist: z.array(z.string()),

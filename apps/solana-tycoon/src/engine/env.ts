@@ -31,6 +31,6 @@ export function readEnv(env: Record<string, string | undefined>): EnvConfig {
 		keypairPath: value(env, "KEYPAIR_PATH"),
 		port: parsePort(value(env, "PORT") ?? "7777", "PORT"),
 		rpcMaxRps: rps,
-		publicFallback: configuredRpc === null,
+		publicFallback: configuredRpc === null || configuredRpc.replace(/\/+$/, "") === PUBLIC_RPC_URL,
 	};
 }

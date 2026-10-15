@@ -1,12 +1,14 @@
 import type { BondingCurve } from "@pump-fun/pump-sdk";
 import type { RpcBudget } from "../../src/engine/chain/rpcBudget";
-import type {
-	ChainSource,
-	CurveSnapshot,
-	Globals,
-	HolderSummary,
-	PoolSnapshot,
-	TokenProgramKind,
+import {
+	type ChainSource,
+	type CurveSnapshot,
+	type Globals,
+	type HolderSummary,
+	MAX_WATCHES,
+	type PoolSnapshot,
+	type TokenProgramKind,
+	WatchLimitError,
 } from "../../src/engine/chain/types";
 import type { Clock } from "../../src/engine/clock";
 import { fixtureGlobal } from "./curves";
@@ -92,7 +94,9 @@ export class FakeChain implements ChainSource {
 		return { degraded: this.degraded };
 	}
 
+	// Enforces the same watch cap as PumpChain so callers that exceed it fail here too.
 	private listen<T>(map: Map<string, Set<Listener<T>>>, mint: string, listener: Listener<T>): () => void {
+		if (!map.get(mint)?.size && this.watchCount() >= MAX_WATCHES) throw new WatchLimitError(MAX_WATCHES);
 		const set = map.get(mint) ?? new Set<Listener<T>>();
 		set.add(listener);
 		map.set(mint, set);

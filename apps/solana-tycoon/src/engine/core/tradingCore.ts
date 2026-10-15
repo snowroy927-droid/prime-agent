@@ -1,4 +1,5 @@
 import type { Ack, Command, EngineEvent, EngineSnapshot } from "../../shared/protocol";
+import { HARD_LIMITS } from "../../shared/settings";
 import { computeLaunchStats, computeStats } from "../../shared/stats";
 import type {
 	CheckResult,
@@ -60,7 +61,6 @@ type Result = { ok: true } | { ok: false; error: string };
 
 const RADAR_MAX = 50;
 const CLOSES_IN_SNAPSHOT = 500;
-const WATCH_MAX = 10;
 const DAY_MS = 86_400_000;
 const GLOBALS_RETRY_MS = 10_000;
 
@@ -83,6 +83,8 @@ export class TradingCore {
 	private readonly watches = new Map<string, { kind: "curve" | "pool"; stop: () => void }>();
 	private readonly lastStale = new Map<string, boolean>();
 	private readonly orders = new Set<Promise<void>>();
+	private killActive = false;
+	private startedAt = 0;
 	private feedState: { status: FeedStatus; dropped: number; reconnectAt: number | null } = {
 		status: "connecting",
 		dropped: 0,
@@ -103,6 +105,7 @@ export class TradingCore {
 	}
 
 	async start(): Promise<void> {
+		this.startedAt = this.deps.clock.now();
 		const state = this.deps.ledger.load();
 		for (const warning of state.warnings) this.log("warn", warning);
 		this.closes = [...state.closed].sort((a, b) => a.closedAt - b.closedAt);
@@ -148,6 +151,7 @@ export class TradingCore {
 			balanceLamports: this.balanceLamports().toString(),
 			serverTime: now,
 			clockRate: this.deps.clockRate ?? 1,
+			startedAt: this.startedAt,
 		};
 	}
 
@@ -174,8 +178,7 @@ export class TradingCore {
 			case "pin": {
 				if (!isValidMint(command.mint)) return ack(fail("Invalid mint"));
 				if (this.pinned.has(command.mint)) return ack({ ok: true });
-				const watched = new Set([...this.pinned, ...this.positionByMint.keys()]);
-				if (!watched.has(command.mint) && watched.size >= WATCH_MAX) return ack(fail("Watch limit reached"));
+				if (this.pinned.size >= HARD_LIMITS.pinsMax) return ack(fail(`Hotbar full (${HARD_LIMITS.pinsMax} pins)`));
 				this.pinned.add(command.mint);
 				this.watchCoin(command.mint);
 				this.emit({ type: "pinned", mints: [...this.pinned] });
@@ -192,10 +195,13 @@ export class TradingCore {
 				this.emitRisk(true);
 				return ack({ ok: true });
 			case "resume":
+				this.killActive = false;
 				this.deps.risk.setPaused(false, null);
 				this.emitRisk(true);
 				return ack({ ok: true });
 			case "kill": {
+				// Until resume, fills that land after the kill are sold too: in-flight buys and partial sells.
+				this.killActive = true;
 				for (const position of [...this.positions.values()]) {
 					if (!position.pendingOrder) this.placeSell(position.id, 100, "exit", "kill");
 				}
@@ -258,6 +264,8 @@ export class TradingCore {
 	}
 
 	private addLaunch(launch: Launch): void {
+		// Count the creator now: a check that never reaches the chain must not hide a serial launcher.
+		if (launch.creator) this.deps.history.record(launch.creator, launch.mint, launch.receivedAt);
 		this.radar.unshift({ launch, check: null });
 		if (this.radar.length > RADAR_MAX) this.radar.length = RADAR_MAX;
 		this.recentLaunches.push(launch);
@@ -350,6 +358,7 @@ export class TradingCore {
 			this.emitPosition(position);
 			this.emit({ type: "balance", lamports: this.balanceLamports().toString() });
 			if (!this.stopped) this.watchCoin(mint);
+			if (this.killActive) this.placeSell(positionId, 100, "exit", "kill");
 		});
 		return { ok: true };
 	}
@@ -402,6 +411,7 @@ export class TradingCore {
 			this.setPosition(next);
 			this.emitPosition(next);
 			this.emit({ type: "balance", lamports: this.balanceLamports().toString() });
+			if (this.killActive) this.placeSell(positionId, 100, "exit", "kill");
 		});
 		return { ok: true };
 	}

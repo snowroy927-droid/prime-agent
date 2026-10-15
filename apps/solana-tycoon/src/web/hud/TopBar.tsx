@@ -78,7 +78,7 @@ export function TopBar({
 					<span className="k">BALANCE</span>
 					<span className="v">{snapshot ? `${solAmount(snapshot.balanceLamports)} SOL` : "--"}</span>
 				</div>
-				<div className="chip" title="Realized since this page connected, plus open positions at current value">
+				<div className="chip" title="Realized since the engine started, plus open positions at current value">
 					<span className="k">SESSION</span>
 					<span className={`v ${session > 0n ? "good" : session < 0n ? "bad" : ""}`}>{solSigned(session)}</span>
 				</div>

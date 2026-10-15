@@ -3,7 +3,8 @@ import type { EngineEvent, EngineSnapshot } from "../src/shared/protocol";
 import { DEFAULT_SETTINGS } from "../src/shared/settings";
 import { computeLaunchStats, computeStats } from "../src/shared/stats";
 import type { ClosedTrade, Launch, Position } from "../src/shared/types";
-import { initialGameState, reduce, serverNow, tick } from "../src/web/state/store";
+import { holdRequired } from "../src/web/hud/actions";
+import { initialGameState, reduce, serverNow, sessionLamports, tick } from "../src/web/state/store";
 import { closed } from "./helpers/trades";
 
 const NOW = 1_000_000;
@@ -33,6 +34,7 @@ function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
 		balanceLamports: "1000000000",
 		serverTime: NOW,
 		clockRate: 1,
+		startedAt: NOW,
 		...over,
 	};
 }
@@ -139,6 +141,27 @@ describe("game store", () => {
 		expect(state.upgrades).toEqual([]);
 	});
 
+	it("logs dropped feed messages at 1, 10, 100 and so on, not once per message", () => {
+		const events: EngineEvent[] = [{ type: "snapshot", snapshot: snapshot() }];
+		for (let dropped = 1; dropped <= 25; dropped++)
+			events.push({ type: "feed", status: "live", dropped, reconnectAt: null });
+		const warnings = apply(events).log.filter((line) => line.level === "warn");
+		expect(warnings.map((line) => line.message)).toEqual([
+			"Feed: 1 message dropped without a valid mint (raw samples in data/fixtures/)",
+			"Feed: 10 messages dropped without a valid mint (raw samples in data/fixtures/)",
+		]);
+	});
+
+	it("counts session PnL from the engine's start, not from when the page connected", () => {
+		const state = apply([
+			{
+				type: "snapshot",
+				snapshot: snapshot({ startedAt: NOW - 60_000, closes: [closed(10_000_000n, NOW - 30_000)] }),
+			},
+		]);
+		expect(sessionLamports(state)).toBe(10_000_000n);
+	});
+
 	it("logs the dropped feed message count when it grows", () => {
 		const state = apply([
 			{ type: "snapshot", snapshot: snapshot() },
@@ -187,5 +210,35 @@ describe("server clock", () => {
 
 	it("uses local time before any snapshot", () => {
 		expect(serverNow(null, 1_500)).toBe(1_500);
+	});
+});
+
+describe("hold to snipe", () => {
+	const approved = {
+		mint: "mint1",
+		verdict: "approved" as const,
+		results: [],
+		reason: "ok",
+		checkedAt: NOW,
+		attempt: 1,
+	};
+
+	it("needs a hold for a coin whose verdict this page no longer knows", () => {
+		expect(holdRequired(snapshot(), "pinned-off-radar", NOW)).toBe(true);
+	});
+
+	it("needs no hold for an approved coin outside a tilt", () => {
+		const snap = snapshot({ launches: [{ launch: launch(1), check: approved }] });
+		expect(holdRequired(snap, "mint1", NOW)).toBe(false);
+	});
+
+	it("needs a hold for a rejected coin or during a tilt", () => {
+		const rejected = snapshot({ launches: [{ launch: launch(1), check: { ...approved, verdict: "rejected" } }] });
+		expect(holdRequired(rejected, "mint1", NOW)).toBe(true);
+		const tilted = snapshot({
+			launches: [{ launch: launch(1), check: approved }],
+			risk: { ...snapshot().risk, tiltUntil: NOW + 60_000 },
+		});
+		expect(holdRequired(tilted, "mint1", NOW)).toBe(true);
 	});
 });

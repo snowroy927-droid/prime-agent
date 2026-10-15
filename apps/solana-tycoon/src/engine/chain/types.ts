@@ -3,6 +3,7 @@ import type { FeeConfig as AmmFeeConfig, GlobalConfig } from "@pump-fun/pump-swa
 import type { RawMint } from "@solana/spl-token";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type BN from "bn.js";
+import { HARD_LIMITS } from "../../shared/settings";
 
 export interface Globals {
 	global: Global;
@@ -66,6 +67,9 @@ export type ChainConnection = Pick<
 	| "getTokenLargestAccounts"
 	| "getTokenSupply"
 >;
+
+// Every open position plus every pin can hold a price watch at once, so a fill never finds the cap full.
+export const MAX_WATCHES = HARD_LIMITS.maxPositionsMax + HARD_LIMITS.pinsMax;
 
 export class WatchLimitError extends Error {
 	constructor(limit: number) {

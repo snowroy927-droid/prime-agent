@@ -65,16 +65,21 @@ the generator changes.
 ## Using the dashboard
 
 - **Launch radar (left).** New launches, newest first. Each shows its verdict (APPROVED, REJECTED, PENDING,
-  UNCHECKED) and the first failing reason. SNIPE buys at your buy size. A rejected coin, or any coin during a tilt
-  cooldown, needs HOLD SNIPE: hold the button for 1.5 s. PIN puts a coin on the hotbar.
+  UNCHECKED) and the first failing reason. SNIPE buys at your buy size. HOLD SNIPE means hold the button for 1.5 s.
+  It is needed for a rejected coin, for any coin during a tilt cooldown, and for a pinned coin that has left the
+  radar. PIN puts a coin on the hotbar.
 - **Trading desk (right).** Open positions with entry, current price, PnL and price age, SELL 50% / SELL 100%, quick
   stats, and office upgrades.
-- **Hotbar.** Six pinned coins; keys `1` to `6` snipe them.
+- **Hotbar.** Up to six pinned coins; keys `1` to `6` snipe them.
 - **Top bar.** Balance, session PnL, wins/losses, combo, tilt, feed, RPC, and engine state. Also the AUTO, PAUSE,
-  MUTED, ANALYTICS, SETTINGS, and KILL buttons. KILL sells every position and pauses the engine; hold it for 1.5 s.
+  MUTED, ANALYTICS, SETTINGS, and KILL buttons.
+  - KILL sells every position and pauses the engine; hold it for 1.5 s.
+  - Until you press RESUME, a buy that was already in flight is sold as soon as it fills, and so is the rest of a
+    position whose partial sell was pending.
+  - SESSION counts from when the engine started.
 - **Combo tiers.** The screen palette follows your streak of winning closes: 2 wins ICE, 3 NEON, 4 GOLD, 5 or more
-  FEVER. Any losing close turns it COLD for 20 seconds. A win is PnL above zero after all fees; breakeven counts as a
-  loss.
+  FEVER. Any losing close turns it COLD for 20 seconds. A win is PnL above zero after all fees. A breakeven close
+  ends the streak but does not turn the screen COLD or count toward tilt.
 - **Office upgrades.** Unlocked by your best-ever cumulative realized PnL in the current mode: neon sign 0.1 SOL,
   plants and coffee 0.5, second desk row 1, trophy wall 2.5, space window 5, gold vault 10.
 - **Analytics terminal.** Open it with the ANALYTICS button, by clicking GLOOP or GLOOP's monitor in the office, or

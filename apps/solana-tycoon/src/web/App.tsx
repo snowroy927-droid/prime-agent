@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Ack, CommandInput } from "../shared/protocol";
 import { Sfx } from "./audio/sfx";
 import { Analytics } from "./hud/Analytics";
-import type { HudActions } from "./hud/actions";
+import { type HudActions, holdRequired } from "./hud/actions";
 import { Banner } from "./hud/Banner";
 import { EventLog } from "./hud/EventLog";
 import { Hotbar } from "./hud/Hotbar";
@@ -138,12 +138,7 @@ export function App() {
 
 	const snapshot = state.snapshot;
 	const actions: HudActions = useMemo(() => {
-		const needsHold = (mint: string): boolean => {
-			if (!snapshot) return false;
-			const tilted = snapshot.risk.tiltUntil !== null && snapshot.risk.tiltUntil > state.now;
-			const verdict = snapshot.launches.find((entry) => entry.launch.mint === mint)?.check?.verdict;
-			return tilted || verdict === "rejected";
-		};
+		const needsHold = (mint: string): boolean => holdRequired(snapshot, mint, state.now);
 		return {
 			snipe: (mint, holdConfirmed) => void run({ type: "snipe", mint, holdConfirmed }),
 			sell: (mint, pct) => void run({ type: "sell", mint, pct }),

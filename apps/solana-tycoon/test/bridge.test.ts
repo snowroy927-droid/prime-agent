@@ -112,8 +112,9 @@ describe("BridgeServer HTTP", () => {
 		expect(res.body).toContain(`content="${token}"`);
 		expect(res.body).not.toContain("%SNIPER_TOKEN%");
 		expect(res.headers["content-security-policy"]).toBe(
-			`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ws://127.0.0.1:${port} ws://localhost:${port}`,
+			`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ws://127.0.0.1:${port} ws://localhost:${port}; frame-ancestors 'none'`,
 		);
+		expect(res.headers["x-frame-options"]).toBe("DENY");
 	});
 
 	it("serves static assets and refuses paths outside the web root", async () => {

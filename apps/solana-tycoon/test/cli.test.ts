@@ -52,6 +52,12 @@ describe("parseArgs", () => {
 });
 
 describe("readEnv", () => {
+	it("treats the public endpoint as the public fallback even when it is set explicitly", () => {
+		expect(readEnv({ RPC_URL: "https://api.mainnet-beta.solana.com" }).publicFallback).toBe(true);
+		expect(readEnv({ RPC_URL: "https://api.mainnet-beta.solana.com/" }).publicFallback).toBe(true);
+		expect(readEnv({ RPC_URL: "https://rpc.example" }).publicFallback).toBe(false);
+	});
+
 	it("falls back to the public RPC and derives the websocket URL", () => {
 		expect(readEnv({})).toEqual({
 			rpcUrl: "https://api.mainnet-beta.solana.com",

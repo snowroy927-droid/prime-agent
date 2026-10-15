@@ -78,6 +78,7 @@ function snapshot(): EngineSnapshot {
 		balanceLamports: "1015000000",
 		serverTime: 5_000,
 		clockRate: 1,
+		startedAt: 0,
 	};
 }
 

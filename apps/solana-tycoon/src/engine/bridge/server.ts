@@ -120,7 +120,8 @@ export class BridgeServer {
 			return;
 		}
 		const headers = {
-			"Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ws://127.0.0.1:${this.port} ws://localhost:${this.port}`,
+			"Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ws://127.0.0.1:${this.port} ws://localhost:${this.port}; frame-ancestors 'none'`,
+			"X-Frame-Options": "DENY",
 			"X-Content-Type-Options": "nosniff",
 			"Referrer-Policy": "no-referrer",
 		};

@@ -303,9 +303,9 @@ describe("TradingCore commands", () => {
 		});
 	});
 
-	it("pins coins up to the shared watch limit", async () => {
+	it("pins coins up to the six hotbar slots", async () => {
 		const h = await harness();
-		for (let i = 0; i < 10; i++) {
+		for (let i = 0; i < 6; i++) {
 			const ack = await cmd(h.core, {
 				type: "pin",
 				id: `p${i}`,
@@ -315,14 +315,29 @@ describe("TradingCore commands", () => {
 		}
 		expect(
 			await cmd(h.core, { type: "pin", id: "x", mint: web3.Keypair.generate().publicKey.toBase58() }),
-		).toMatchObject({
-			ok: false,
-			error: "Watch limit reached",
-		});
+		).toMatchObject({ ok: false, error: "Hotbar full (6 pins)" });
 		const pinned = h.core.snapshot().pinned;
-		expect(pinned).toHaveLength(10);
+		expect(pinned).toHaveLength(6);
 		expect((await cmd(h.core, { type: "unpin", id: "u", mint: pinned[0] })).ok).toBe(true);
-		expect(h.core.snapshot().pinned).toHaveLength(9);
+		expect(h.core.snapshot().pinned).toHaveLength(5);
+	});
+
+	it("still prices and exits every position with the hotbar full and ten positions open", async () => {
+		const h = await harness();
+		expect((await cmd(h.core, { type: "setSettings", id: "s", patch: { maxPositions: 10 } })).ok).toBe(true);
+		for (let i = 0; i < 6; i++) {
+			await cmd(h.core, { type: "pin", id: `p${i}`, mint: web3.Keypair.generate().publicKey.toBase58() });
+		}
+		const coins = Array.from({ length: 10 }, () => {
+			const launch = newLaunch(h.clock);
+			return { mint: launch.mint, curve: healthyCoin(h, launch.mint) };
+		});
+		for (const coin of coins) await cmd(h.core, { type: "snipe", id: coin.mint, mint: coin.mint });
+		await h.clock.advance(800);
+		expect(h.core.snapshot().positions).toHaveLength(10);
+		for (const coin of coins) h.chain.setCurve(coin.mint, scaledPrice(coin.curve, 3));
+		await h.clock.advance(800);
+		expect(ofType(h.events, "close").map((event) => event.trade.reason)).toEqual(Array(10).fill("take_profit"));
 	});
 
 	it("kill sells every position and pauses the engine", async () => {
@@ -347,6 +362,70 @@ describe("TradingCore commands", () => {
 		});
 		expect((await cmd(h.core, { type: "resume", id: "r" })).ok).toBe(true);
 		expect(h.core.snapshot().risk.paused).toBe(false);
+	});
+});
+
+describe("TradingCore kill switch", () => {
+	it("sells a buy that was still in flight when the kill landed", async () => {
+		const h = await harness();
+		const launch = newLaunch(h.clock);
+		healthyCoin(h, launch.mint);
+		await cmd(h.core, { type: "snipe", id: "a", mint: launch.mint });
+		expect((await cmd(h.core, { type: "kill", id: "k" })).ok).toBe(true);
+		await h.clock.advance(800);
+		await h.clock.advance(800);
+		expect(h.core.snapshot().positions).toHaveLength(0);
+		expect(ofType(h.events, "close").map((event) => event.trade.reason)).toEqual(["kill"]);
+	});
+
+	it("sells the rest of a position whose partial sell was pending at the kill", async () => {
+		const h = await harness();
+		const launch = newLaunch(h.clock);
+		healthyCoin(h, launch.mint);
+		await cmd(h.core, { type: "snipe", id: "a", mint: launch.mint });
+		await h.clock.advance(800);
+		expect((await cmd(h.core, { type: "sell", id: "s", mint: launch.mint, pct: 50 })).ok).toBe(true);
+		expect((await cmd(h.core, { type: "kill", id: "k" })).ok).toBe(true);
+		await h.clock.advance(800);
+		await h.clock.advance(800);
+		expect(h.core.snapshot().positions).toHaveLength(0);
+		expect(ofType(h.events, "close").map((event) => event.trade.reason)).toEqual(["kill"]);
+	});
+
+	it("stops selling new fills once the engine is resumed", async () => {
+		const h = await harness();
+		await cmd(h.core, { type: "kill", id: "k" });
+		await cmd(h.core, { type: "resume", id: "r" });
+		const launch = newLaunch(h.clock);
+		healthyCoin(h, launch.mint);
+		await cmd(h.core, { type: "snipe", id: "a", mint: launch.mint });
+		await h.clock.advance(1_600);
+		expect(h.core.snapshot().positions).toHaveLength(1);
+	});
+});
+
+describe("TradingCore serial launchers", () => {
+	it("counts a creator's launches even when an earlier check never reached the chain", async () => {
+		const h = await harness();
+		const creator = web3.Keypair.generate().publicKey.toBase58();
+		const first = newLaunch(h.clock, { creator });
+		healthyCoin(h, first.mint);
+		h.chain.fetchCurveError = new Error("429 Too Many Requests");
+		h.feed.launch(first);
+		await h.clock.advance(2_000);
+		expect(ofType(h.events, "check")[0].check.verdict).toBe("unchecked");
+		h.chain.fetchCurveError = null;
+		for (const delay of [5_000, 5_000]) {
+			await h.clock.advance(delay);
+			const next = newLaunch(h.clock, { creator });
+			healthyCoin(h, next.mint);
+			h.feed.launch(next);
+		}
+		await h.clock.advance(2_000);
+		const third = ofType(h.events, "check").at(-1)?.check;
+		expect(third).toMatchObject({ verdict: "rejected", reason: "Serial launcher: 3 coins in 60m" });
+		await h.clock.advance(800);
+		expect(ofType(h.events, "order").some((event) => event.order.mint === third?.mint)).toBe(false);
 	});
 });
 

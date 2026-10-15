@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PumpChain } from "../src/engine/chain/pumpChain";
 import { RpcBudget } from "../src/engine/chain/rpcBudget";
 import { pump, splToken, swap, web3 } from "../src/engine/chain/solana";
-import { WatchLimitError } from "../src/engine/chain/types";
+import { MAX_WATCHES, WatchLimitError } from "../src/engine/chain/types";
 import { ManualClock } from "../src/engine/clock";
 import {
 	encodeCurve,
@@ -120,13 +120,14 @@ describe("PumpChain watches", () => {
 		expect(conn.calls).toHaveLength(0);
 	});
 
-	it("limits active watches to 10 and frees a slot on unsubscribe", async () => {
+	it("limits active watches to every position plus every pin and frees a slot on unsubscribe", async () => {
+		expect(MAX_WATCHES).toBe(16);
 		const stops: (() => void)[] = [];
-		for (let i = 0; i < 10; i++) stops.push(chain.watchCurve(newMint().toBase58(), () => {}));
+		for (let i = 0; i < MAX_WATCHES; i++) stops.push(chain.watchCurve(newMint().toBase58(), () => {}));
 		expect(() => chain.watchCurve(newMint().toBase58(), () => {})).toThrow(WatchLimitError);
 		stops[0]();
 		expect(() => chain.watchCurve(newMint().toBase58(), () => {})).not.toThrow();
-		expect(conn.listenerCount()).toBe(10);
+		expect(conn.listenerCount()).toBe(MAX_WATCHES);
 	});
 });
 

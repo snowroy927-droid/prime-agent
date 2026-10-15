@@ -10,6 +10,7 @@ import {
 	type CurveSnapshot,
 	type Globals,
 	type HolderSummary,
+	MAX_WATCHES,
 	type PoolQuoteInputs,
 	type PoolSnapshot,
 	type TokenProgramKind,
@@ -17,7 +18,6 @@ import {
 } from "./types";
 
 const POLL_MS = 2_000;
-const MAX_WATCHES = 10;
 const DEGRADED_AFTER_ERRORS = 3;
 const BUDGET_RETRY_MS = 100;
 
