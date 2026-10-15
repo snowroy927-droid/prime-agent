@@ -11,6 +11,8 @@ import { Radar } from "./hud/Radar";
 import { SettingsPanel } from "./hud/SettingsPanel";
 import { TopBar } from "./hud/TopBar";
 import { useHold } from "./hud/useHold";
+import { hudColors } from "./scene/palettes";
+import { SceneView } from "./scene/SceneView";
 import { useGame } from "./state/useGame";
 
 const HOTBAR_ACTIONS: ActionId[] = ["hotbar1", "hotbar2", "hotbar3", "hotbar4", "hotbar5", "hotbar6"];
@@ -68,7 +70,11 @@ export function App() {
 	const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
 
 	useEffect(() => {
-		document.documentElement.dataset.tier = state.tier;
+		const root = document.documentElement;
+		root.dataset.tier = state.tier;
+		const colors = hudColors(state.tier);
+		root.style.setProperty("--accent", colors.accent);
+		root.style.setProperty("--bad", colors.danger);
 	}, [state.tier]);
 	useEffect(() => {
 		document.documentElement.dataset.reducedMotion = String(reducedMotion);
@@ -198,6 +204,7 @@ export function App() {
 				<Radar state={state} actions={actions} hold={hold} />
 				<section className="center" aria-label="Office">
 					<div className="scene-wrap" data-scene="true">
+						<SceneView store={store} reducedMotion={reducedMotion} />
 						<Banner combo={state.combo} tier={state.tier} />
 						<Offline connection={state.connection} retryAt={() => game.client.retryAt()} />
 					</div>

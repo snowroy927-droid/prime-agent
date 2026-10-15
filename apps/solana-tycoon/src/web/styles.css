@@ -428,6 +428,15 @@ html[data-tier="fever"] .logo {
 	display: block;
 	image-rendering: pixelated;
 }
+.scene-fallback {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	text-align: center;
+	color: var(--dim);
+}
 .banner {
 	position: absolute;
 	left: 50%;
