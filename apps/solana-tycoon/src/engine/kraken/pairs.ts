@@ -7,6 +7,11 @@ const USD_QUOTES = new Set(["ZUSD", "USD"]);
 
 const text = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : null);
 
+// AssetPairs keeps Kraken's legacy codes in wsname (the WebSocket v1 route); WebSocket v2 rejects "XBT/USD" and
+// expects "BTC/USD" (docs.kraken.com spot-ws-intro, checked 2026-10-15). XDG -> DOGE follows the same rename and
+// is unverified; refused subscriptions are logged so a wrong name shows up on the first live run.
+const V2_BASES: Record<string, string> = { XBT: "BTC", XDG: "DOGE" };
+
 // Kraken's AssetPairs fields `wsname`, `ordermin`, `costmin` and `status` are optional here because their
 // presence is unverified (spec Section 2); a missing status means tradeable.
 export function parseAssetPairs(
@@ -42,11 +47,12 @@ export function parseAssetPairs(
 		if (!isUsd) continue;
 		const status = text(entry.status);
 		if (status !== null && status !== "online") continue;
-		const symbol = wsname ? wsname.slice(0, -"/USD".length) : (altname ?? "").replace(/Z?USD$/, "");
+		const legacy = wsname ? wsname.slice(0, -"/USD".length) : (altname ?? "").replace(/Z?USD$/, "");
+		const symbol = V2_BASES[legacy] ?? legacy;
 		if (symbol === "" || excluded.has(symbol.toUpperCase())) continue;
 		pairs.push({
 			pair: key,
-			wsname: wsname ?? `${symbol}/USD`,
+			wsname: `${symbol}/USD`,
 			symbol,
 			priceDecimals,
 			lotDecimals,

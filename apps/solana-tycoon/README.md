@@ -231,6 +231,9 @@ items are handled defensively and are the first things to check on a real run:
   counted, and the first 50 raw messages of each run are saved to `data/fixtures/kraken-raw-<timestamp>.jsonl`.
 - **Unverified:** that AssetPairs returns `wsname`, `ordermin`, `costmin`, and `status`. All four are optional; a
   missing `status` means tradeable and a missing `wsname` is derived from `altname`.
+- **Checked:** WebSocket v2 names Bitcoin `BTC/USD`, while AssetPairs still says `XBT/USD` (the v1 name), so the desk
+  subscribes with BTC. **Unverified:** that Dogecoin is `DOGE/USD` in v2 (AssetPairs says `XDG/USD`). Any symbol
+  Kraken refuses is logged once as "Kraken: refused <symbol> (<reason>)".
 - **Unverified:** the exact public REST limits. The client spends at most 1 request per second and backs off on
   HTTP 429.
 - **Unverified:** the REST OHLC row layout `[time, open, high, low, close, vwap, volume, count]`. Rows it cannot read

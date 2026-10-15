@@ -179,6 +179,17 @@ describe("KrakenDesk", () => {
 		expect(h.desk.snapshot().positions).toMatchObject([{ id: "k1", pair: "MOONUSD", costUsdMicros: "50400000" }]);
 	});
 
+	it("logs each symbol Kraken refuses to subscribe, once", async () => {
+		const h = await harness();
+		const rejected = { type: "rejected", symbol: "XBT/USD", error: "Currency pair not supported XBT/USD" } as const;
+		h.feed.emit(rejected);
+		h.feed.emit(rejected);
+		const lines = h.events.flatMap((event) => (event.type === "log" ? [event.line.message] : []));
+		expect(lines.filter((line) => line.includes("XBT/USD"))).toEqual([
+			"Kraken: refused XBT/USD (Currency pair not supported XBT/USD)",
+		]);
+	});
+
 	it("refuses a manual buy on a price older than priceStaleSec", async () => {
 		const h = await harness();
 		h.ticker("MOON", "1.000", "1.001");

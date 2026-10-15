@@ -18,6 +18,7 @@ export type KrakenFeedEvent =
 			at: number;
 	  }
 	| { type: "bar"; wsname: string; begin: number; close: string; volume: string; at: number }
+	| { type: "rejected"; symbol: string | null; error: string }
 	| { type: "status"; status: FeedStatus; dropped: number; reconnectAt: number | null };
 
 export interface KrakenFeedLike {
@@ -90,6 +91,20 @@ export function parseKrakenMessage(raw: string, now: number): Parsed {
 		return { kind: "invalid" };
 	}
 	if (!isRecord(message)) return { kind: "invalid" };
+	if (message.method === "subscribe" && message.success === false) {
+		const result = isRecord(message.result) ? message.result : {};
+		const symbol = typeof message.symbol === "string" ? message.symbol : result.symbol;
+		return {
+			kind: "events",
+			events: [
+				{
+					type: "rejected",
+					symbol: typeof symbol === "string" ? symbol : null,
+					error: typeof message.error === "string" ? message.error : "subscribe failed",
+				},
+			],
+		};
+	}
 	if ("method" in message) return { kind: "ignored" };
 	const channel = message.channel;
 	if (typeof channel === "string" && IGNORED_CHANNELS.has(channel)) return { kind: "ignored" };

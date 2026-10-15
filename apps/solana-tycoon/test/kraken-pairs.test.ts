@@ -58,6 +58,23 @@ describe("parseAssetPairs", () => {
 });
 
 describe("PairUniverse", () => {
+	it("uses WebSocket v2 names for Kraken's legacy XBT and XDG codes, keeping the REST pair key", () => {
+		const { pairs } = parseAssetPairs(
+			{
+				XXBTZUSD: { altname: "XBTUSD", wsname: "XBT/USD", quote: "ZUSD", pair_decimals: 1, lot_decimals: 8 },
+				XDGUSD: { altname: "XDGUSD", wsname: "XDG/USD", quote: "ZUSD", pair_decimals: 7, lot_decimals: 8 },
+				XXBTZEUR: { altname: "XBTEUR", quote: "ZEUR", pair_decimals: 1, lot_decimals: 8 },
+				SOLUSD: { altname: "SOLUSD", quote: "ZUSD", pair_decimals: 2, lot_decimals: 8 },
+			},
+			[],
+		);
+		expect(pairs.map((pair) => [pair.pair, pair.wsname, pair.symbol])).toEqual([
+			["XXBTZUSD", "BTC/USD", "BTC"],
+			["XDGUSD", "DOGE/USD", "DOGE"],
+			["SOLUSD", "SOL/USD", "SOL"],
+		]);
+	});
+
 	it("reports pairs that disappear on refresh", async () => {
 		const clock = new ManualClock(0);
 		const results = [FIXTURE, { PEPEUSD: FIXTURE.PEPEUSD }];

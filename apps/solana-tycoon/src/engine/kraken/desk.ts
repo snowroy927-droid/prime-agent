@@ -131,6 +131,7 @@ export class KrakenDesk {
 	private readonly skipCounts = new Map<string, number>();
 	private readonly skipSeen = new Set<string>();
 	private readonly seedQueue: string[] = [];
+	private readonly rejected = new Set<string>();
 	private closes: KrakenClosedTrade[] = [];
 	private movers: Mover[] = [];
 	private feedState: { status: FeedStatus; dropped: number; reconnectAt: number | null } = {
@@ -324,6 +325,13 @@ export class KrakenDesk {
 		if (event.type === "status") {
 			this.feedState = { status: event.status, dropped: event.dropped, reconnectAt: event.reconnectAt };
 			this.deps.emit({ type: "kraken_feed", ...this.feedState });
+			return;
+		}
+		if (event.type === "rejected") {
+			const key = event.symbol ?? event.error;
+			if (this.rejected.has(key)) return;
+			this.rejected.add(key);
+			this.log("warn", `Kraken: refused ${event.symbol ?? "a subscription"} (${event.error})`);
 			return;
 		}
 		if (event.type === "bar") {

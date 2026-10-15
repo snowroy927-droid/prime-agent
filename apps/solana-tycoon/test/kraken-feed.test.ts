@@ -121,6 +121,23 @@ describe("parseKrakenMessage", () => {
 		});
 	});
 
+	it("reports a symbol Kraken refuses to subscribe", () => {
+		const reply = {
+			method: "subscribe",
+			success: false,
+			error: "Currency pair not supported XBT/USD",
+			symbol: "XBT/USD",
+		};
+		expect(parseKrakenMessage(JSON.stringify(reply), 0)).toEqual({
+			kind: "events",
+			events: [{ type: "rejected", symbol: "XBT/USD", error: "Currency pair not supported XBT/USD" }],
+		});
+		expect(parseKrakenMessage(JSON.stringify({ method: "subscribe", success: false }), 0)).toEqual({
+			kind: "events",
+			events: [{ type: "rejected", symbol: null, error: "subscribe failed" }],
+		});
+	});
+
 	it("ignores heartbeats, status and acks, and flags anything else", () => {
 		expect(parseKrakenMessage(JSON.stringify({ channel: "heartbeat" }), 0)).toEqual({ kind: "ignored" });
 		expect(parseKrakenMessage(JSON.stringify({ channel: "status", data: [] }), 0)).toEqual({ kind: "ignored" });
