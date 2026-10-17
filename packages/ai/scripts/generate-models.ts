@@ -27,6 +27,7 @@ const packageRoot = join(__dirname, "..");
 interface ModelsDevModel {
 	id: string;
 	name: string;
+	canonical_model_id?: string;
 	tool_call?: boolean;
 	reasoning?: boolean;
 	limit?: {
@@ -1070,7 +1071,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				} else if (upstream === "anthropic") {
 					api = "anthropic-messages";
 					baseUrl = CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL;
-					id = nativeId;
+					// models.dev keys these by dotted names (claude-opus-4.7) and records the
+					// Anthropic API id (anthropic/claude-opus-4-7) as canonical_model_id; the
+					// native route forwards the id unchanged, so it must be the API id.
+					id = m.canonical_model_id?.startsWith("anthropic/")
+						? m.canonical_model_id.slice("anthropic/".length)
+						: nativeId;
 				} else if (upstream === "workers-ai") {
 					api = "openai-completions";
 					baseUrl = CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL;
@@ -1416,9 +1422,11 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			}
 		}
 
-		// Process Kimi For Coding models
-		if (data["kimi-for-coding"]?.models) {
-			const kimiModels = data["kimi-for-coding"].models as Record<string, ModelsDevModel>;
+		// Process Kimi For Coding models. models.dev renamed the api.kimi.com deployment from "kimi-for-coding"
+		// to "kimi-code-plan-cn"; "kimi-code-plan-global" (api.kimi.ai) is a different endpoint.
+		const kimiCatalog = data["kimi-code-plan-cn"]?.models ? data["kimi-code-plan-cn"] : data["kimi-for-coding"];
+		if (kimiCatalog?.models) {
+			const kimiModels = kimiCatalog.models as Record<string, ModelsDevModel>;
 			const hasCanonicalModel = Object.prototype.hasOwnProperty.call(kimiModels, "kimi-for-coding");
 
 			const kimiAliases = new Set(["k2p5", "k2p6"]);

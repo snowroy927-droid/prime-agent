@@ -170,13 +170,15 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("preserves Anthropic-style cache markers for OpenRouter Anthropic models", async () => {
-		const model = getModel("openrouter", "anthropic/claude-sonnet-4");
+		const model = getModel("openrouter", "anthropic/claude-haiku-4.5");
 		const params = await capturePayload(model);
 		expectAnthropicCacheMarkers(params);
 	});
 
 	it("preserves route-specific cache write pricing for Anthropic models", async () => {
-		const model = getModel("openrouter", "anthropic/claude-3-haiku");
+		// A cache write price that is not 1.25x input proves the route's own price is billed.
+		const base = getModel("openrouter", "anthropic/claude-haiku-4.5");
+		const model = { ...base, cost: { ...base.cost, cacheWrite: base.cost.input * 1.2 } };
 		const { params, result } = await runCompletion(model);
 		expectAnthropicCacheMarkers(params);
 		expect(result.usage.cost.cacheWrite).toBeCloseTo((80 * model.cost.cacheWrite) / 1_000_000);
@@ -197,7 +199,7 @@ describe("openai-completions cacheControlFormat", () => {
 	});
 
 	it("prices one-hour OpenRouter Anthropic cache writes at twice the input rate", async () => {
-		const model = getModel("openrouter", "anthropic/claude-sonnet-4");
+		const model = getModel("openrouter", "anthropic/claude-haiku-4.5");
 		const { params, result } = await runCompletion(model, { cacheRetention: "long" });
 		expectAnthropicCacheMarkers(params, { type: "ephemeral", ttl: "1h" });
 		expect(result.usage.cost.cacheWrite).toBeCloseTo((80 * model.cost.input * 2) / 1_000_000);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getModel, getSupportedThinkingLevels } from "../src/models.js";
+import { getModel, getModels, getSupportedThinkingLevels } from "../src/models.js";
 
 describe("getSupportedThinkingLevels", () => {
 	it("includes max but not xhigh for Anthropic Opus 4.6 on anthropic-messages API", () => {
@@ -98,7 +98,8 @@ describe("getSupportedThinkingLevels", () => {
 	});
 
 	it("includes only high/xhigh plus off for DeepSeek V4 Flash on opencode-go", () => {
-		const model = getModel("opencode-go", "deepseek-v4-flash");
+		// opencode-go lists the current point release (deepseek-v4.1-flash), so match the family.
+		const model = getModels("opencode-go").find((m) => /^deepseek-v4(\.\d+)?-flash$/.test(m.id));
 		expect(model).toBeDefined();
 		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "high", "xhigh"]);
 	});
