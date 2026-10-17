@@ -393,6 +393,9 @@ arpeggio pitched up per tier, loss crack, FEVER loop. Muted by default.
 
 ## 9. Milestone 2: live trading
 
+Superseded by `2026-10-17-live-trading-design.md`, which the owner approved in design on 2026-10-17. The text below
+is the original design, kept for reference.
+
 ### 9.1 Buy and sell flow
 
 1. `fetchBuyState` / `fetchSellState` with the coin's token program (Token-2022 for `create_v2` coins).
