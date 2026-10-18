@@ -1364,5 +1364,32 @@ bar`,
 				assert.deepStrictEqual(incremental, fresh, `Diverged at ${text.length} chars`);
 			}
 		});
+
+		it("preserves block cache across setText calls for completed blocks", () => {
+			const md = new Markdown("", 0, 0, defaultMarkdownTheme);
+			md.setText("First paragraph\n\nSecond paragraph");
+			md.render(80);
+
+			const blockCacheBefore = (md as unknown as { blockCache: Map<string, string[]> }).blockCache;
+			assert.ok(blockCacheBefore.size > 0, "blockCache should store cached completed blocks after render");
+
+			md.setText("First paragraph\n\nSecond paragraph\n\nThird paragraph");
+			const blockCacheAfterSetText = (md as unknown as { blockCache: Map<string, string[]> }).blockCache;
+			assert.strictEqual(
+				blockCacheAfterSetText,
+				blockCacheBefore,
+				"setText should retain the blockCache Map instance",
+			);
+			assert.ok(blockCacheAfterSetText.size > 0, "blockCache should retain cached entries across setText");
+
+			const lines = md.render(80);
+			const freshLines = new Markdown(
+				"First paragraph\n\nSecond paragraph\n\nThird paragraph",
+				0,
+				0,
+				defaultMarkdownTheme,
+			).render(80);
+			assert.deepStrictEqual(lines, freshLines, "Render output with retained block cache matches fresh render");
+		});
 	});
 });
