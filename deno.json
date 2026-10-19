@@ -1,18 +1,24 @@
 {
+	"exclude": [
+		"packages/**",
+		"scripts/**",
+		"assets/**",
+		"prime-agent-runtime/**"
+	],
 	"lint": {
 		"exclude": [
-			"**/build/**",
-			"**/dist/**",
-			"**/node_modules/**",
-			"**/models.generated.ts"
+			"packages/**",
+			"scripts/**",
+			"assets/**",
+			"prime-agent-runtime/**"
 		]
 	},
 	"fmt": {
 		"exclude": [
-			"**/build/**",
-			"**/dist/**",
-			"**/node_modules/**",
-			"**/models.generated.ts"
+			"packages/**",
+			"scripts/**",
+			"assets/**",
+			"prime-agent-runtime/**"
 		]
 	}
 }
