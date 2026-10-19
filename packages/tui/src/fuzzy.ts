@@ -9,10 +9,30 @@ export interface FuzzyMatch {
 	score: number;
 }
 
-export function fuzzyMatch(query: string, text: string): FuzzyMatch {
-	const queryLower = query.toLowerCase();
-	const textLower = text.toLowerCase();
+// Fast character code lookup for word boundaries to avoid regex evaluation in hot loop
+function isWordBoundaryCode(code: number): boolean {
+	return (
+		code === 32 || // ' '
+		code === 45 || // '-'
+		code === 95 || // '_'
+		code === 46 || // '.'
+		code === 47 || // '/'
+		code === 58 || // ':'
+		code === 9 || // '\t'
+		code === 10 || // '\n'
+		code === 13 // '\r'
+	);
+}
 
+// Hoisted regexes for swapped query matching on cold path
+const ALPHA_NUMERIC_REGEX = /^(?<letters>[a-z]+)(?<digits>[0-9]+)$/;
+const NUMERIC_ALPHA_REGEX = /^(?<digits>[0-9]+)(?<letters>[a-z]+)$/;
+
+/**
+ * Internal helper for matching pre-lowercased query and text.
+ * Optimization: Avoids repeated lowercasing and regex creation in hot loops.
+ */
+function fuzzyMatchLower(queryLower: string, textLower: string): FuzzyMatch {
 	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
 		if (normalizedQuery.length === 0) {
 			return { matches: true, score: 0 };
@@ -28,8 +48,9 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let consecutiveMatches = 0;
 
 		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+			// Fast character code comparison avoids string slice/indexer allocations
+			if (textLower.charCodeAt(i) === normalizedQuery.charCodeAt(queryIndex)) {
+				const isWordBoundary = i === 0 || isWordBoundaryCode(textLower.charCodeAt(i - 1));
 
 				// Reward consecutive matches
 				if (lastMatchIndex === i - 1) {
@@ -72,8 +93,8 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		return primaryMatch;
 	}
 
-	const alphaNumericMatch = queryLower.match(/^(?<letters>[a-z]+)(?<digits>[0-9]+)$/);
-	const numericAlphaMatch = queryLower.match(/^(?<digits>[0-9]+)(?<letters>[a-z]+)$/);
+	const alphaNumericMatch = queryLower.match(ALPHA_NUMERIC_REGEX);
+	const numericAlphaMatch = queryLower.match(NUMERIC_ALPHA_REGEX);
 	const swappedQuery = alphaNumericMatch
 		? `${alphaNumericMatch.groups?.digits ?? ""}${alphaNumericMatch.groups?.letters ?? ""}`
 		: numericAlphaMatch
@@ -92,6 +113,10 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 	return { matches: true, score: swappedMatch.score + 5 };
 }
 
+export function fuzzyMatch(query: string, text: string): FuzzyMatch {
+	return fuzzyMatchLower(query.toLowerCase(), text.toLowerCase());
+}
+
 export interface ScoredItem<T> {
 	item: T;
 	score: number;
@@ -103,8 +128,10 @@ export interface ScoredItem<T> {
  * tokens must match.
  */
 export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: T) => string): ScoredItem<T>[] {
+	// Optimization: Pre-lowercase search tokens once rather than inside inner loops per item
 	const tokens = query
 		.trim()
+		.toLowerCase()
 		.split(/\s+/)
 		.filter((t) => t.length > 0);
 
@@ -114,13 +141,14 @@ export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: 
 
 	const results: ScoredItem<T>[] = [];
 
-	for (const item of items) {
-		const text = getText(item);
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]!;
+		const textLower = getText(item).toLowerCase();
 		let totalScore = 0;
 		let allMatch = true;
 
-		for (const token of tokens) {
-			const match = fuzzyMatch(token, text);
+		for (let j = 0; j < tokens.length; j++) {
+			const match = fuzzyMatchLower(tokens[j]!, textLower);
 			if (match.matches) {
 				totalScore += match.score;
 			} else {
