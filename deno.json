@@ -1,0 +1,18 @@
+{
+	"lint": {
+		"exclude": [
+			"**/build/**",
+			"**/dist/**",
+			"**/node_modules/**",
+			"**/models.generated.ts"
+		]
+	},
+	"fmt": {
+		"exclude": [
+			"**/build/**",
+			"**/dist/**",
+			"**/node_modules/**",
+			"**/models.generated.ts"
+		]
+	}
+}
