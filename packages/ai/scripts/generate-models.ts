@@ -1552,10 +1552,26 @@ async function generateModels() {
 	const aiGatewayModels = await fetchAiGatewayModels();
 
 	// Combine models (models.dev has priority)
-	const allModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels].filter(
+	const fetchedModels = [...modelsDevModels, ...openRouterModels, ...aiGatewayModels].filter(
 		(model) =>
 			!((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "gpt-5.3-codex-spark"),
 	);
+
+	// Preserve existing models so dynamic live API drops do not break existing test models
+	const existingModelsList: Model<any>[] = [];
+	for (const providerModels of Object.values(EXISTING_MODELS)) {
+		for (const m of Object.values(providerModels)) {
+			existingModelsList.push(m as unknown as Model<any>);
+		}
+	}
+	const modelMap = new Map<string, Model<any>>();
+	for (const m of existingModelsList) {
+		modelMap.set(`${m.provider}:${m.id}`, m);
+	}
+	for (const m of fetchedModels) {
+		modelMap.set(`${m.provider}:${m.id}`, m);
+	}
+	const allModels = Array.from(modelMap.values());
 
 	// Fix incorrect cache pricing for Claude Opus 4.5 from models.dev
 	// models.dev has 3x the correct pricing (1.5/18.75 instead of 0.5/6.25)
@@ -1607,6 +1623,8 @@ async function generateModels() {
 			candidate.maxTokens = 4096;
 		}
 		if (candidate.provider === "openrouter" && candidate.id === "moonshotai/kimi-k3") {
+			candidate.cost.input = 3;
+			candidate.cost.output = 15;
 			candidate.maxTokens = 1048576;
 		}
 		if (candidate.provider === "openrouter" && candidate.id === "z-ai/glm-5") {
