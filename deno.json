@@ -1,0 +1,12 @@
+{
+	"lint": {
+		"exclude": [
+			"packages/**",
+			"scripts/**",
+			"assets/**",
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/build/**"
+		]
+	}
+}
