@@ -12,16 +12,21 @@ for (const [provider, models] of Object.entries(MODELS)) {
 	modelRegistry.set(provider, providerModels);
 }
 
-type ModelApi<
-	TProvider extends KnownProvider,
-	TModelId extends keyof (typeof MODELS)[TProvider],
-> = (typeof MODELS)[TProvider][TModelId] extends { api: infer TApi } ? (TApi extends Api ? TApi : never) : never;
+type ModelApi<TProvider extends KnownProvider, TModelId> = TProvider extends keyof typeof MODELS
+	? TModelId extends keyof (typeof MODELS)[TProvider]
+		? (typeof MODELS)[TProvider][TModelId] extends { api: infer TApi }
+			? TApi extends Api
+				? TApi
+				: Api
+			: Api
+		: Api
+	: Api;
 
-export function getModel<TProvider extends KnownProvider, TModelId extends keyof (typeof MODELS)[TProvider]>(
-	provider: TProvider,
-	modelId: TModelId,
-): Model<ModelApi<TProvider, TModelId>> {
-	const providerModels = modelRegistry.get(provider);
+export function getModel<
+	TProvider extends KnownProvider,
+	TModelId extends TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : string,
+>(provider: TProvider, modelId: TModelId): Model<ModelApi<TProvider, TModelId>> {
+	const providerModels = modelRegistry.get(provider as string);
 	return providerModels?.get(modelId as string) as Model<ModelApi<TProvider, TModelId>>;
 }
 
@@ -31,9 +36,13 @@ export function getProviders(): KnownProvider[] {
 
 export function getModels<TProvider extends KnownProvider>(
 	provider: TProvider,
-): Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[] {
-	const models = modelRegistry.get(provider);
-	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[]) : [];
+): Model<ModelApi<TProvider, TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : string>>[] {
+	const models = modelRegistry.get(provider as string);
+	return models
+		? (Array.from(models.values()) as Model<
+				ModelApi<TProvider, TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : string>
+			>[])
+		: [];
 }
 
 export function supportsFastMode<TApi extends Api>(model: Model<TApi>): boolean {
