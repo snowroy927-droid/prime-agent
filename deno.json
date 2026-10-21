@@ -1,10 +1,12 @@
 {
 	"lint": {
 		"exclude": [
-			"**/build/**",
-			"**/dist/**",
+			"packages/**",
+			"scripts/**",
+			"assets/**",
 			"**/node_modules/**",
-			"packages/coding-agent/examples/extensions/doom-overlay/doom/build/"
+			"**/dist/**",
+			"**/build/**"
 		]
 	}
 }
