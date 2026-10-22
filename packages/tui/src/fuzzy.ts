@@ -9,16 +9,38 @@ export interface FuzzyMatch {
 	score: number;
 }
 
-export function fuzzyMatch(query: string, text: string): FuzzyMatch {
-	const queryLower = query.toLowerCase();
-	const textLower = text.toLowerCase();
+// Fast character code check for word boundaries instead of running a regex test on every match
+function isWordBoundaryCode(code: number): boolean {
+	return (
+		code <= 32 || // space, tab, newline, control chars
+		code === 45 || // -
+		code === 46 || // .
+		code === 47 || // /
+		code === 58 || // :
+		code === 95 || // _
+		(code > 127 && /\s/.test(String.fromCharCode(code))) // non-ASCII whitespace
+	);
+}
 
+/**
+ * Perform fuzzy matching between a query and text.
+ * Optional pre-lowercased strings can be passed to avoid repeated lowercasing in batch filtering.
+ */
+export function fuzzyMatch(
+	query: string,
+	text: string,
+	queryLower: string = query.toLowerCase(),
+	textLower: string = text.toLowerCase(),
+): FuzzyMatch {
 	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
-		if (normalizedQuery.length === 0) {
+		const qLen = normalizedQuery.length;
+		const tLen = textLower.length;
+
+		if (qLen === 0) {
 			return { matches: true, score: 0 };
 		}
 
-		if (normalizedQuery.length > textLower.length) {
+		if (qLen > tLen) {
 			return { matches: false, score: 0 };
 		}
 
@@ -27,9 +49,10 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let lastMatchIndex = -1;
 		let consecutiveMatches = 0;
 
-		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+		// Optimization: Use charCodeAt comparisons and fast word boundary checks in hot loop
+		for (let i = 0; i < tLen && queryIndex < qLen; i++) {
+			if (textLower.charCodeAt(i) === normalizedQuery.charCodeAt(queryIndex)) {
+				const isWordBoundary = i === 0 || isWordBoundaryCode(textLower.charCodeAt(i - 1));
 
 				// Reward consecutive matches
 				if (lastMatchIndex === i - 1) {
@@ -56,7 +79,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 			}
 		}
 
-		if (queryIndex < normalizedQuery.length) {
+		if (queryIndex < qLen) {
 			return { matches: false, score: 0 };
 		}
 
@@ -112,15 +135,19 @@ export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: 
 		return items.map((item) => ({ item, score: 0 }));
 	}
 
+	// Optimization: Pre-lowercase tokens once instead of per-item
+	const lowerTokens = tokens.map((t) => t.toLowerCase());
 	const results: ScoredItem<T>[] = [];
 
 	for (const item of items) {
 		const text = getText(item);
+		// Optimization: Pre-lowercase item text once per item
+		const textLower = text.toLowerCase();
 		let totalScore = 0;
 		let allMatch = true;
 
-		for (const token of tokens) {
-			const match = fuzzyMatch(token, text);
+		for (let i = 0; i < tokens.length; i++) {
+			const match = fuzzyMatch(tokens[i]!, text, lowerTokens[i]!, textLower);
 			if (match.matches) {
 				totalScore += match.score;
 			} else {
