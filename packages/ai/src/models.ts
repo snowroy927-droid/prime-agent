@@ -1,5 +1,5 @@
 import { MODELS } from "./models.generated.js";
-import type { Api, KnownProvider, Model, ModelThinkingLevel, Usage } from "./types.js";
+import type { Api, KnownProvider, Model, ModelThinkingLevel, Provider, Usage } from "./types.js";
 
 const modelRegistry: Map<string, Map<string, Model<Api>>> = new Map();
 
@@ -12,22 +12,54 @@ for (const [provider, models] of Object.entries(MODELS)) {
 	modelRegistry.set(provider, providerModels);
 }
 
-type ModelApi<
-	TProvider extends KnownProvider,
-	TModelId extends TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : string,
-> = TProvider extends keyof typeof MODELS
+type DefaultProviderApi<TProvider extends Provider> = TProvider extends "anthropic"
+	? "anthropic-messages"
+	: TProvider extends "amazon-bedrock"
+		? "bedrock-converse-stream"
+		: TProvider extends "google"
+			? "google-generative-ai"
+			: TProvider extends "google-vertex"
+				? "google-vertex"
+				: TProvider extends "mistral"
+					? "mistral-conversations"
+					: TProvider extends "openai-codex"
+						? "openai-codex-responses"
+						: TProvider extends "azure-openai-responses" | "openai-responses"
+							? "azure-openai-responses"
+							: TProvider extends
+										| "openai"
+										| "openrouter"
+										| "vercel-ai-gateway"
+										| "cloudflare-workers-ai"
+										| "cloudflare-ai-gateway"
+										| "fireworks"
+										| "groq"
+										| "cerebras"
+										| "xai"
+										| "zai"
+										| "deepseek"
+								? "openai-completions"
+								: Api;
+
+type InferApiFromModelId<TProvider extends Provider, TModelId extends string> = TProvider extends "github-copilot"
+	? TModelId extends `${string}claude${string}`
+		? "anthropic-messages"
+		: "openai-responses"
+	: DefaultProviderApi<TProvider>;
+
+type ModelApi<TProvider extends Provider, TModelId extends string> = TProvider extends keyof typeof MODELS
 	? TModelId extends keyof (typeof MODELS)[TProvider]
 		? (typeof MODELS)[TProvider][TModelId] extends { api: infer TApi }
 			? TApi extends Api
 				? TApi
-				: never
-			: never
-		: never
-	: never;
+				: InferApiFromModelId<TProvider, TModelId>
+			: InferApiFromModelId<TProvider, TModelId>
+		: InferApiFromModelId<TProvider, TModelId>
+	: InferApiFromModelId<TProvider, TModelId>;
 
 export function getModel<
 	TProvider extends KnownProvider,
-	TModelId extends TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : string,
+	TModelId extends (TProvider extends keyof typeof MODELS ? keyof (typeof MODELS)[TProvider] : never) | (string & {}),
 >(provider: TProvider, modelId: TModelId): Model<ModelApi<TProvider, TModelId>> {
 	const providerModels = modelRegistry.get(provider);
 	return providerModels?.get(modelId as string) as Model<ModelApi<TProvider, TModelId>>;
