@@ -9,16 +9,24 @@ export interface FuzzyMatch {
 	score: number;
 }
 
+/** Check if a character code represents whitespace or a word boundary delimiter (\s, -, _, ., /, :) */
+function isWordBoundaryCode(code: number): boolean {
+	return code <= 32 || code === 45 || code === 46 || code === 47 || code === 58 || code === 95;
+}
+
 export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 	const queryLower = query.toLowerCase();
 	const textLower = text.toLowerCase();
 
 	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
-		if (normalizedQuery.length === 0) {
+		const qLen = normalizedQuery.length;
+		const tLen = textLower.length;
+
+		if (qLen === 0) {
 			return { matches: true, score: 0 };
 		}
 
-		if (normalizedQuery.length > textLower.length) {
+		if (qLen > tLen) {
 			return { matches: false, score: 0 };
 		}
 
@@ -27,9 +35,10 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let lastMatchIndex = -1;
 		let consecutiveMatches = 0;
 
-		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+		// Fast string matching loop using charCodeAt to avoid string allocation and regex evaluation
+		for (let i = 0; i < tLen && queryIndex < qLen; i++) {
+			if (textLower.charCodeAt(i) === normalizedQuery.charCodeAt(queryIndex)) {
+				const isWordBoundary = i === 0 || isWordBoundaryCode(textLower.charCodeAt(i - 1));
 
 				// Reward consecutive matches
 				if (lastMatchIndex === i - 1) {
@@ -56,7 +65,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 			}
 		}
 
-		if (queryIndex < normalizedQuery.length) {
+		if (queryIndex < qLen) {
 			return { matches: false, score: 0 };
 		}
 
@@ -103,8 +112,14 @@ export interface ScoredItem<T> {
  * tokens must match.
  */
 export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: T) => string): ScoredItem<T>[] {
-	const tokens = query
-		.trim()
+	const trimmed = query.trim();
+	if (trimmed.length === 0) {
+		return items.map((item) => ({ item, score: 0 }));
+	}
+
+	// Lowercase tokens once up front to avoid repeating toLowerCase on every item
+	const tokens = trimmed
+		.toLowerCase()
 		.split(/\s+/)
 		.filter((t) => t.length > 0);
 
@@ -113,14 +128,17 @@ export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: 
 	}
 
 	const results: ScoredItem<T>[] = [];
+	const itemCount = items.length;
+	const tokenCount = tokens.length;
 
-	for (const item of items) {
+	for (let i = 0; i < itemCount; i++) {
+		const item = items[i]!;
 		const text = getText(item);
 		let totalScore = 0;
 		let allMatch = true;
 
-		for (const token of tokens) {
-			const match = fuzzyMatch(token, text);
+		for (let j = 0; j < tokenCount; j++) {
+			const match = fuzzyMatch(tokens[j]!, text);
 			if (match.matches) {
 				totalScore += match.score;
 			} else {
