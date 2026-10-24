@@ -9,17 +9,47 @@ export interface FuzzyMatch {
 	score: number;
 }
 
-export function fuzzyMatch(query: string, text: string): FuzzyMatch {
+const ALPHA_NUMERIC_REGEX = /^(?<letters>[a-z]+)(?<digits>[0-9]+)$/;
+const NUMERIC_ALPHA_REGEX = /^(?<digits>[0-9]+)(?<letters>[a-z]+)$/;
+
+/** Fast check for word boundary characters (\s, -, _, ., /, :) without RegExp overhead. */
+function isWordBoundaryCode(code: number): boolean {
+	return (
+		code <= 32 || // Whitespace
+		code === 45 || // -
+		code === 95 || // _
+		code === 46 || // .
+		code === 47 || // /
+		code === 58 // :
+	);
+}
+
+export function fuzzyMatch(query: string, text: string, textLower?: string): FuzzyMatch {
 	const queryLower = query.toLowerCase();
-	const textLower = text.toLowerCase();
+	const tLower = textLower ?? text.toLowerCase();
 
 	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
-		if (normalizedQuery.length === 0) {
+		const qLen = normalizedQuery.length;
+		const tLen = tLower.length;
+
+		if (qLen === 0) {
 			return { matches: true, score: 0 };
 		}
 
-		if (normalizedQuery.length > textLower.length) {
+		if (qLen > tLen) {
 			return { matches: false, score: 0 };
+		}
+
+		// Fast availability & sequence pre-check to reject non-matching candidate strings early
+		let firstIdx = -1;
+		for (let k = 0; k < qLen; k++) {
+			const idx = tLower.indexOf(normalizedQuery[k]!, k === 0 ? 0 : firstIdx + 1);
+			if (idx === -1) {
+				return { matches: false, score: 0 };
+			}
+			if (k === 0) {
+				firstIdx = idx;
+			}
 		}
 
 		let queryIndex = 0;
@@ -27,9 +57,9 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let lastMatchIndex = -1;
 		let consecutiveMatches = 0;
 
-		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+		for (let i = firstIdx; i < tLen && queryIndex < qLen; i++) {
+			if (tLower[i] === normalizedQuery[queryIndex]) {
+				const isWordBoundary = i === 0 || isWordBoundaryCode(tLower.charCodeAt(i - 1));
 
 				// Reward consecutive matches
 				if (lastMatchIndex === i - 1) {
@@ -56,11 +86,11 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 			}
 		}
 
-		if (queryIndex < normalizedQuery.length) {
+		if (queryIndex < qLen) {
 			return { matches: false, score: 0 };
 		}
 
-		if (normalizedQuery === textLower) {
+		if (normalizedQuery === tLower) {
 			score -= 100;
 		}
 
@@ -72,8 +102,8 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		return primaryMatch;
 	}
 
-	const alphaNumericMatch = queryLower.match(/^(?<letters>[a-z]+)(?<digits>[0-9]+)$/);
-	const numericAlphaMatch = queryLower.match(/^(?<digits>[0-9]+)(?<letters>[a-z]+)$/);
+	const alphaNumericMatch = queryLower.match(ALPHA_NUMERIC_REGEX);
+	const numericAlphaMatch = queryLower.match(NUMERIC_ALPHA_REGEX);
 	const swappedQuery = alphaNumericMatch
 		? `${alphaNumericMatch.groups?.digits ?? ""}${alphaNumericMatch.groups?.letters ?? ""}`
 		: numericAlphaMatch
@@ -116,11 +146,13 @@ export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: 
 
 	for (const item of items) {
 		const text = getText(item);
+		// Pre-lowercase text once per item to avoid repeated allocations across tokens
+		const textLower = text.toLowerCase();
 		let totalScore = 0;
 		let allMatch = true;
 
 		for (const token of tokens) {
-			const match = fuzzyMatch(token, text);
+			const match = fuzzyMatch(token, text, textLower);
 			if (match.matches) {
 				totalScore += match.score;
 			} else {
