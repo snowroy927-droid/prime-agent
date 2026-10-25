@@ -220,28 +220,35 @@ export function visibleWidth(str: string): number {
 		clean = clean.replace(/\t/g, "   ");
 	}
 	if (clean.includes("\x1b")) {
-		// Strip supported ANSI/OSC/APC escape sequences in one pass.
-		// This covers CSI styling/cursor codes, OSC hyperlinks and prompt markers,
-		// and APC sequences like CURSOR_MARKER.
-		let stripped = "";
-		let i = 0;
-		const extractAnsi = createAnsiCodeExtractor(clean);
-		while (i < clean.length) {
-			const ansi = extractAnsi(i);
-			if (ansi) {
-				i += ansi.length;
-				continue;
+		// Fast path for common CSI sequences using regex before full scanner
+		clean = clean.replace(COMMON_CSI_REGEX, "");
+		if (clean.includes("\x1b")) {
+			let stripped = "";
+			let i = 0;
+			const extractAnsi = createAnsiCodeExtractor(clean);
+			while (i < clean.length) {
+				const ansi = extractAnsi(i);
+				if (ansi) {
+					i += ansi.length;
+					continue;
+				}
+				stripped += clean[i];
+				i++;
 			}
-			stripped += clean[i];
-			i++;
+			clean = stripped;
 		}
-		clean = stripped;
 	}
 
-	// Calculate width
-	let width = 0;
-	for (const { segment } of segmenter.segment(clean)) {
-		width += graphemeWidth(segment);
+	// Fast path: if cleaned string is pure ASCII, visible width is its length
+	let width: number;
+	if (isPrintableAscii(clean)) {
+		width = clean.length;
+	} else {
+		// Calculate width for non-ASCII clean string
+		width = 0;
+		for (const { segment } of segmenter.segment(clean)) {
+			width += graphemeWidth(segment);
+		}
 	}
 
 	// Cache result
