@@ -154,6 +154,15 @@ function finalizeTruncatedResult(
  * check to avoid running the RGI_Emoji regex unnecessarily.
  */
 function graphemeWidth(segment: string): number {
+	// Fast path: single ASCII printable character always has width 1.
+	// This avoids running zeroWidthRegex and codepoint checks for the majority of text.
+	if (segment.length === 1) {
+		const code = segment.charCodeAt(0);
+		if (code >= 0x20 && code <= 0x7e) {
+			return 1;
+		}
+	}
+
 	// Zero-width clusters
 	if (zeroWidthRegex.test(segment)) {
 		return 0;
@@ -182,8 +191,8 @@ function graphemeWidth(segment: string): number {
 
 	// Trailing halfwidth/fullwidth forms and AM vowels that segment with a base.
 	if (segment.length > 1) {
-		for (const char of segment.slice(1)) {
-			const c = char.codePointAt(0)!;
+		for (let i = 1; i < segment.length; i++) {
+			const c = segment.charCodeAt(i);
 			if (c >= 0xff00 && c <= 0xffef) {
 				width += eastAsianWidth(c);
 			} else if (c === 0x0e33 || c === 0x0eb3) {
