@@ -154,6 +154,15 @@ function finalizeTruncatedResult(
  * check to avoid running the RGI_Emoji regex unnecessarily.
  */
 function graphemeWidth(segment: string): number {
+	// Fast path: single printable ASCII character always has display width 1.
+	// Bypasses regex checks and eastAsianWidth calls for the vast majority of graphemes.
+	if (segment.length === 1) {
+		const code = segment.charCodeAt(0);
+		if (code >= 0x20 && code <= 0x7e) {
+			return 1;
+		}
+	}
+
 	// Zero-width clusters
 	if (zeroWidthRegex.test(segment)) {
 		return 0;
