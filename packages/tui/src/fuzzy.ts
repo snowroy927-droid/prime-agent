@@ -9,87 +9,116 @@ export interface FuzzyMatch {
 	score: number;
 }
 
-export function fuzzyMatch(query: string, text: string): FuzzyMatch {
-	const queryLower = query.toLowerCase();
-	const textLower = text.toLowerCase();
+// Fast word boundary check for ASCII characters, falling back to regex for non-ASCII
+const WORD_BOUNDARY_REGEX = /[\s\-_./:]/;
+const IS_WORD_BOUNDARY_ASCII = new Uint8Array(128);
+// Whitespace (\t, \n, \v, \f, \r, space) and boundary punctuation (-, ., /, :, _)
+for (const ch of [9, 10, 11, 12, 13, 32, 45, 46, 47, 58, 95]) {
+	IS_WORD_BOUNDARY_ASCII[ch] = 1;
+}
 
-	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
-		if (normalizedQuery.length === 0) {
-			return { matches: true, score: 0 };
-		}
+function isWordBoundary(textLower: string, index: number): boolean {
+	if (index === 0) return true;
+	const prevCode = textLower.charCodeAt(index - 1);
+	if (prevCode < 128) return IS_WORD_BOUNDARY_ASCII[prevCode] === 1;
+	return WORD_BOUNDARY_REGEX.test(textLower[index - 1]!);
+}
 
-		if (normalizedQuery.length > textLower.length) {
-			return { matches: false, score: 0 };
-		}
+const ALPHA_NUMERIC_REGEX = /^([a-z]+)([0-9]+)$/;
+const NUMERIC_ALPHA_REGEX = /^([0-9]+)([a-z]+)$/;
 
-		let queryIndex = 0;
-		let score = 0;
-		let lastMatchIndex = -1;
-		let consecutiveMatches = 0;
+function matchQuery(queryLower: string, textLower: string): FuzzyMatch {
+	const queryLen = queryLower.length;
+	const textLen = textLower.length;
 
-		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+	if (queryLen === 0) {
+		return { matches: true, score: 0 };
+	}
 
-				// Reward consecutive matches
-				if (lastMatchIndex === i - 1) {
-					consecutiveMatches++;
-					score -= consecutiveMatches * 5;
-				} else {
-					consecutiveMatches = 0;
-					// Penalize gaps
-					if (lastMatchIndex >= 0) {
-						score += (i - lastMatchIndex - 1) * 2;
-					}
+	if (queryLen > textLen) {
+		return { matches: false, score: 0 };
+	}
+
+	let queryIndex = 0;
+	let score = 0;
+	let lastMatchIndex = -1;
+	let consecutiveMatches = 0;
+	let targetCode = queryLower.charCodeAt(0);
+
+	// Integer character comparison loop with cached target code
+	for (let i = 0; i < textLen; i++) {
+		if (textLower.charCodeAt(i) === targetCode) {
+			// Reward consecutive matches
+			if (lastMatchIndex === i - 1) {
+				consecutiveMatches++;
+				score -= consecutiveMatches * 5;
+			} else {
+				consecutiveMatches = 0;
+				// Penalize gaps
+				if (lastMatchIndex >= 0) {
+					score += (i - lastMatchIndex - 1) * 2;
 				}
-
-				// Reward word boundary matches
-				if (isWordBoundary) {
-					score -= 10;
-				}
-
-				// Slight penalty for later matches
-				score += i * 0.1;
-
-				lastMatchIndex = i;
-				queryIndex++;
 			}
+
+			// Reward word boundary matches
+			if (isWordBoundary(textLower, i)) {
+				score -= 10;
+			}
+
+			// Slight penalty for later matches
+			score += i * 0.1;
+
+			lastMatchIndex = i;
+			queryIndex++;
+			if (queryIndex === queryLen) {
+				break;
+			}
+			targetCode = queryLower.charCodeAt(queryIndex);
 		}
+	}
 
-		if (queryIndex < normalizedQuery.length) {
-			return { matches: false, score: 0 };
-		}
+	if (queryIndex < queryLen) {
+		return { matches: false, score: 0 };
+	}
 
-		if (normalizedQuery === textLower) {
-			score -= 100;
-		}
+	if (queryLower === textLower) {
+		score -= 100;
+	}
 
-		return { matches: true, score };
-	};
+	return { matches: true, score };
+}
 
-	const primaryMatch = matchQuery(queryLower);
+function fuzzyMatchInternal(queryLower: string, textLower: string): FuzzyMatch {
+	const primaryMatch = matchQuery(queryLower, textLower);
 	if (primaryMatch.matches) {
 		return primaryMatch;
 	}
 
-	const alphaNumericMatch = queryLower.match(/^(?<letters>[a-z]+)(?<digits>[0-9]+)$/);
-	const numericAlphaMatch = queryLower.match(/^(?<digits>[0-9]+)(?<letters>[a-z]+)$/);
-	const swappedQuery = alphaNumericMatch
-		? `${alphaNumericMatch.groups?.digits ?? ""}${alphaNumericMatch.groups?.letters ?? ""}`
-		: numericAlphaMatch
-			? `${numericAlphaMatch.groups?.letters ?? ""}${numericAlphaMatch.groups?.digits ?? ""}`
-			: "";
+	let swappedQuery = "";
+	const alphaNumericMatch = queryLower.match(ALPHA_NUMERIC_REGEX);
+	if (alphaNumericMatch) {
+		swappedQuery = `${alphaNumericMatch[2]}${alphaNumericMatch[1]}`;
+	} else {
+		const numericAlphaMatch = queryLower.match(NUMERIC_ALPHA_REGEX);
+		if (numericAlphaMatch) {
+			swappedQuery = `${numericAlphaMatch[2]}${numericAlphaMatch[1]}`;
+		}
+	}
 
 	if (!swappedQuery) {
 		return primaryMatch;
 	}
 
-	const swappedMatch = matchQuery(swappedQuery);
+	const swappedMatch = matchQuery(swappedQuery, textLower);
 	if (!swappedMatch.matches) {
 		return primaryMatch;
 	}
 
 	return { matches: true, score: swappedMatch.score + 5 };
+}
+
+export function fuzzyMatch(query: string, text: string): FuzzyMatch {
+	return fuzzyMatchInternal(query.toLowerCase(), text.toLowerCase());
 }
 
 export interface ScoredItem<T> {
@@ -103,8 +132,10 @@ export interface ScoredItem<T> {
  * tokens must match.
  */
 export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: T) => string): ScoredItem<T>[] {
+	// Pre-lowercase query tokens once
 	const tokens = query
 		.trim()
+		.toLowerCase()
 		.split(/\s+/)
 		.filter((t) => t.length > 0);
 
@@ -114,13 +145,15 @@ export function fuzzyFilterScored<T>(items: T[], query: string, getText: (item: 
 
 	const results: ScoredItem<T>[] = [];
 
-	for (const item of items) {
-		const text = getText(item);
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]!;
+		// Lowercase item text once per item instead of per token
+		const textLower = getText(item).toLowerCase();
 		let totalScore = 0;
 		let allMatch = true;
 
-		for (const token of tokens) {
-			const match = fuzzyMatch(token, text);
+		for (let j = 0; j < tokens.length; j++) {
+			const match = fuzzyMatchInternal(tokens[j]!, textLower);
 			if (match.matches) {
 				totalScore += match.score;
 			} else {
