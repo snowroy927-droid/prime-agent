@@ -9,16 +9,30 @@ export interface FuzzyMatch {
 	score: number;
 }
 
+// Fast word boundary check replacing regex /[\s\-_./:]/
+function isWordBoundary(text: string, i: number): boolean {
+	if (i === 0) {
+		return true;
+	}
+	const code = text.charCodeAt(i - 1);
+	// <= 32 matches whitespace characters (\s: space 32, tab 9, newline 10, CR 13, etc.)
+	// 45 = '-', 46 = '.', 47 = '/', 58 = ':', 95 = '_'
+	return code <= 32 || code === 45 || code === 46 || code === 47 || code === 58 || code === 95;
+}
+
 export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 	const queryLower = query.toLowerCase();
 	const textLower = text.toLowerCase();
 
 	const matchQuery = (normalizedQuery: string): FuzzyMatch => {
-		if (normalizedQuery.length === 0) {
+		const queryLen = normalizedQuery.length;
+		const textLen = textLower.length;
+
+		if (queryLen === 0) {
 			return { matches: true, score: 0 };
 		}
 
-		if (normalizedQuery.length > textLower.length) {
+		if (queryLen > textLen) {
 			return { matches: false, score: 0 };
 		}
 
@@ -27,10 +41,16 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 		let lastMatchIndex = -1;
 		let consecutiveMatches = 0;
 
-		for (let i = 0; i < textLower.length && queryIndex < normalizedQuery.length; i++) {
-			if (textLower[i] === normalizedQuery[queryIndex]) {
-				const isWordBoundary = i === 0 || /[\s\-_./:]/.test(textLower[i - 1]!);
+		// Performance optimization:
+		// 1. Terminate early if remaining characters in text are fewer than remaining characters in query.
+		// 2. Use charCodeAt instead of string indexing in the tight loop.
+		// 3. Fast character-code check for word boundaries instead of RegExp.test.
+		for (let i = 0; i < textLen && queryIndex < queryLen; i++) {
+			if (textLen - i < queryLen - queryIndex) {
+				return { matches: false, score: 0 };
+			}
 
+			if (textLower.charCodeAt(i) === normalizedQuery.charCodeAt(queryIndex)) {
 				// Reward consecutive matches
 				if (lastMatchIndex === i - 1) {
 					consecutiveMatches++;
@@ -44,7 +64,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 				}
 
 				// Reward word boundary matches
-				if (isWordBoundary) {
+				if (isWordBoundary(textLower, i)) {
 					score -= 10;
 				}
 
@@ -56,7 +76,7 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 			}
 		}
 
-		if (queryIndex < normalizedQuery.length) {
+		if (queryIndex < queryLen) {
 			return { matches: false, score: 0 };
 		}
 
